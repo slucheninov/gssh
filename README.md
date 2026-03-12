@@ -7,6 +7,8 @@ Zsh helper for SSH into GCP VMs via IAP tunnel. Interactive project/zone selecti
 - **Tab-completion** for VM names from `gcloud compute instances list`
 - **Interactive selectors** for project and zone (fzf or built-in `select`)
 - **VM name cache** with configurable TTL (default 24h)
+- **Exclude prefixes** to filter out unwanted VMs (e.g. `gke-` nodes)
+- **Extra SSH args** via `--` (port forwarding, tunnels, etc.)
 - Works on **macOS** and **Linux**
 
 ## Demo
@@ -78,10 +80,11 @@ cp .env.example .env
 
 | Variable | Default | Description |
 |---|---|---|
-| `GSSH_PROJECTS` | _(required)_ | Space-separated GCP project IDs |
+| `GSSH_PROJECTS` | _(auto-detect)_ | Space-separated GCP project IDs. Falls back to `gcloud config get-value project` |
 | `GSSH_ZONES` | `us-central1-a us-central1-b us-central1-c` | Space-separated zones |
 | `GSSH_CACHE_FILE` | `~/.cache/gssh/vms` | Path to VM name cache |
 | `GSSH_CACHE_TTL` | `86400` (24h) | Cache lifetime in seconds |
+| `GSSH_EXCLUDE_PREFIXES` | _(empty)_ | Space-separated prefixes to exclude from cache (e.g. `gke-`) |
 
 ## Usage
 
@@ -91,6 +94,13 @@ gssh <vm-name>
 
 # Specify project and zone directly
 gssh <vm-name> <project-id> <zone>
+
+# Port forwarding and extra SSH args
+gssh <vm-name> -- -L 3306:localhost:3306
+gssh <vm-name> <project-id> <zone> -- -L 8080:localhost:80 -N
+
+# List cached VM names
+gssh --list
 
 # Force-refresh the VM cache
 gssh --refresh
