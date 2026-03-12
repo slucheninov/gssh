@@ -65,14 +65,24 @@ function gssh() {
     echo "If project/zone are omitted, an interactive selector is shown."
     echo ""
     echo "Commands:"
+    echo "  gssh --list      List cached VM names"
     echo "  gssh --refresh   Force-refresh the VM name cache"
     echo "  gssh --help      Show this help"
+    echo ""
+    echo "Extra SSH args can be passed after --:"
+    echo "  gssh <vm-name> [project] [zone] -- -L 3306:localhost:3306"
     echo ""
     echo "Environment variables:"
     echo "  GSSH_PROJECTS    Space-separated list of GCP project IDs"
     echo "  GSSH_ZONES       Space-separated list of GCP zones (default: us-central1-{a,b,c})"
     echo "  GSSH_CACHE_FILE  Path to VM name cache (default: ~/.cache/gssh/vms)"
     echo "  GSSH_CACHE_TTL   Cache lifetime in seconds (default: 86400)"
+    return 0
+  fi
+
+  if [[ "$1" == "--list" || "$1" == "-l" ]]; then
+    _gssh_refresh_cache
+    cat "$GSSH_CACHE_FILE"
     return 0
   fi
 
@@ -90,8 +100,24 @@ function gssh() {
   fi
 
   local vm="$1"
-  local project="${2:-}"
-  local zone="${3:-}"
+  local project="" zone=""
+  local -a extra_args=()
+  shift
+
+  # Parse: [project] [zone] [-- extra-ssh-args...]
+  while (( $# > 0 )); do
+    if [[ "$1" == "--" ]]; then
+      shift
+      extra_args=("$@")
+      break
+    elif [[ -z "$project" ]]; then
+      project="$1"
+    elif [[ -z "$zone" ]]; then
+      zone="$1"
+    fi
+    shift
+  done
+
   local -a projects=(${(s: :)GSSH_PROJECTS})
   local -a zones=(${(s: :)GSSH_ZONES})
 
@@ -118,5 +144,5 @@ function gssh() {
   [[ -z "$zone" ]] && return 1
 
   echo "gssh: connecting to $vm | project: $project | zone: $zone"
-  gcloud compute ssh -- "$vm" --tunnel-through-iap --project="$project" --zone="$zone"
+  gcloud compute ssh -- "$vm" --tunnel-through-iap --project="$project" --zone="$zone" "${extra_args[@]}"
 }
