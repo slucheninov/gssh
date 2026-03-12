@@ -7,6 +7,7 @@
 : ${GSSH_PROJECTS:=""}
 : ${GSSH_CACHE_FILE:="${HOME}/.cache/gssh/vms"}
 : ${GSSH_CACHE_TTL:=86400}
+: ${GSSH_EXCLUDE_PREFIXES:=""}
 
 # --- Cache ---
 function _gssh_refresh_cache() {
@@ -22,14 +23,25 @@ function _gssh_refresh_cache() {
   if (( now - cache_time > GSSH_CACHE_TTL )) || [[ ! -f "$GSSH_CACHE_FILE" ]]; then
     mkdir -p "$(dirname "$GSSH_CACHE_FILE")"
     echo "gssh: refreshing VM cache..." >&2
-    : > "$GSSH_CACHE_FILE"
+    local tmpfile="$(mktemp)"
     if (( ${#projects} > 0 )); then
       for p in "${projects[@]}"; do
-        gcloud compute instances list --project="$p" --format='value(name)' 2>/dev/null >> "$GSSH_CACHE_FILE"
+        gcloud compute instances list --project="$p" --format='value(name)' 2>/dev/null >> "$tmpfile"
       done
     else
-      gcloud compute instances list --format='value(name)' 2>/dev/null > "$GSSH_CACHE_FILE"
+      gcloud compute instances list --format='value(name)' 2>/dev/null > "$tmpfile"
     fi
+
+    # Filter out excluded prefixes
+    local -a excludes=(${(s: :)GSSH_EXCLUDE_PREFIXES})
+    if (( ${#excludes} > 0 )); then
+      local pattern="^($(IFS='|'; echo "${excludes[*]}"))"
+      grep -Ev "$pattern" "$tmpfile" > "$GSSH_CACHE_FILE"
+    else
+      mv "$tmpfile" "$GSSH_CACHE_FILE"
+      return
+    fi
+    rm -f "$tmpfile"
   fi
 }
 
@@ -75,8 +87,9 @@ function gssh() {
     echo "Environment variables:"
     echo "  GSSH_PROJECTS    Space-separated list of GCP project IDs"
     echo "  GSSH_ZONES       Space-separated list of GCP zones (default: us-central1-{a,b,c})"
-    echo "  GSSH_CACHE_FILE  Path to VM name cache (default: ~/.cache/gssh/vms)"
-    echo "  GSSH_CACHE_TTL   Cache lifetime in seconds (default: 86400)"
+    echo "  GSSH_CACHE_FILE       Path to VM name cache (default: ~/.cache/gssh/vms)"
+    echo "  GSSH_CACHE_TTL        Cache lifetime in seconds (default: 86400)"
+    echo "  GSSH_EXCLUDE_PREFIXES Space-separated prefixes to exclude (e.g. gke-)"
     return 0
   fi
 
