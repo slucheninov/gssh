@@ -8,15 +8,11 @@
 : ${GSSH_CACHE_FILE:="${HOME}/.cache/gssh/vms"}
 : ${GSSH_CACHE_TTL:=86400}
 
-# Split string values into arrays if not already arrays
-typeset -a _GSSH_ZONES _GSSH_PROJECTS
-_GSSH_ZONES=(${(s: :)GSSH_ZONES})
-_GSSH_PROJECTS=(${(s: :)GSSH_PROJECTS})
-
 # --- Cache ---
 function _gssh_refresh_cache() {
   local now=$(date +%s)
   local cache_time=0
+  local -a projects=(${(s: :)GSSH_PROJECTS})
 
   if [[ -f "$GSSH_CACHE_FILE" ]]; then
     cache_time=$(stat -f %m "$GSSH_CACHE_FILE" 2>/dev/null \
@@ -26,7 +22,14 @@ function _gssh_refresh_cache() {
   if (( now - cache_time > GSSH_CACHE_TTL )) || [[ ! -f "$GSSH_CACHE_FILE" ]]; then
     mkdir -p "$(dirname "$GSSH_CACHE_FILE")"
     echo "gssh: refreshing VM cache..." >&2
-    gcloud compute instances list --format='value(name)' 2>/dev/null > "$GSSH_CACHE_FILE"
+    : > "$GSSH_CACHE_FILE"
+    if (( ${#projects} > 0 )); then
+      for p in "${projects[@]}"; do
+        gcloud compute instances list --project="$p" --format='value(name)' 2>/dev/null >> "$GSSH_CACHE_FILE"
+      done
+    else
+      gcloud compute instances list --format='value(name)' 2>/dev/null > "$GSSH_CACHE_FILE"
+    fi
   fi
 }
 
@@ -89,21 +92,31 @@ function gssh() {
   local vm="$1"
   local project="${2:-}"
   local zone="${3:-}"
+  local -a projects=(${(s: :)GSSH_PROJECTS})
+  local -a zones=(${(s: :)GSSH_ZONES})
 
   if [[ -z "$project" ]]; then
-    if (( ${#_GSSH_PROJECTS} == 0 )); then
-      echo "gssh: GSSH_PROJECTS is not set. Define it in .zshrc or .env" >&2
-      return 1
+    if (( ${#projects} == 0 )); then
+      project=$(gcloud config get-value project 2>/dev/null)
+      if [[ -z "$project" ]]; then
+        echo "gssh: GSSH_PROJECTS is not set and no default gcloud project found." >&2
+        echo "       Define GSSH_PROJECTS in .zshrc or .env, or run: gcloud config set project <id>" >&2
+        return 1
+      fi
+      echo "gssh: using default gcloud project: $project" >&2
+    elif (( ${#projects} == 1 )); then
+      project="${projects[1]}"
+    else
+      project=$(_gssh_select "Select project:" "${projects[@]}")
     fi
-    project=$(_gssh_select "Select project:" "${_GSSH_PROJECTS[@]}")
   fi
   [[ -z "$project" ]] && return 1
 
   if [[ -z "$zone" ]]; then
-    zone=$(_gssh_select "Select zone:" "${_GSSH_ZONES[@]}")
+    zone=$(_gssh_select "Select zone:" "${zones[@]}")
   fi
   [[ -z "$zone" ]] && return 1
 
   echo "gssh: connecting to $vm | project: $project | zone: $zone"
-  gcloud compute ssh "$vm" --tunnel-through-iap --project="$project" --zone="$zone"
+  gcloud compute ssh -- "$vm" --tunnel-through-iap --project="$project" --zone="$zone"
 }

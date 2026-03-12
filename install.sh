@@ -15,9 +15,14 @@ mkdir -p "$INSTALL_DIR"
 cp "$REPO_DIR/gssh.zsh"  "$INSTALL_DIR/gssh.zsh"
 cp "$REPO_DIR/_gssh"     "$INSTALL_DIR/_gssh"
 
-if [[ -f "$REPO_DIR/.env" ]]; then
+if [[ -f "$INSTALL_DIR/.env" ]]; then
+  echo "Existing .env found in $INSTALL_DIR, keeping it."
+elif [[ -f "$REPO_DIR/.env" ]]; then
   cp "$REPO_DIR/.env" "$INSTALL_DIR/.env"
   echo "Copied .env to $INSTALL_DIR/.env"
+elif [[ -f "$REPO_DIR/.env.example" ]]; then
+  cp "$REPO_DIR/.env.example" "$INSTALL_DIR/.env"
+  echo "Copied .env.example to $INSTALL_DIR/.env (edit with your settings)"
 fi
 
 SNIPPET='# gssh - GCP IAP SSH helper

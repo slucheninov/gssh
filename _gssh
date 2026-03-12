@@ -4,20 +4,13 @@
 # Loaded automatically by compinit via fpath
 
 local -a vms
-local now=$(date +%s)
-local cache_time=0
 local cache_file="${GSSH_CACHE_FILE:-${HOME}/.cache/gssh/vms}"
-local cache_ttl="${GSSH_CACHE_TTL:-86400}"
+
+if (( $+functions[_gssh_refresh_cache] )); then
+  _gssh_refresh_cache
+fi
 
 if [[ -f "$cache_file" ]]; then
-  cache_time=$(stat -f %m "$cache_file" 2>/dev/null \
-            || stat -c %Y "$cache_file" 2>/dev/null)
+  vms=(${(f)"$(cat "$cache_file")"})
+  _describe 'GCP VM instances' vms
 fi
-
-if (( now - cache_time > cache_ttl )) || [[ ! -f "$cache_file" ]]; then
-  mkdir -p "$(dirname "$cache_file")"
-  gcloud compute instances list --format='value(name)' 2>/dev/null > "$cache_file"
-fi
-
-vms=(${(f)"$(cat "$cache_file")"})
-_describe 'GCP VM instances' vms

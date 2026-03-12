@@ -16,9 +16,9 @@ $ gssh mysql-<TAB>
 mysql-primary-01   mysql-replica-01   mysql-replica-02
 
 $ gssh mysql-primary-01
-Select project: production-4f83b34d
+Select project: production-12345678
 Select zone: us-central1-a
-gssh: connecting to mysql-primary-01 | project: production-4f83b34d | zone: us-central1-a
+gssh: connecting to mysql-primary-01 | project: production-12345678 | zone: us-central1-a
 ```
 
 ## Prerequisites
