@@ -7,7 +7,7 @@ local -a vms
 local cache_file="${GSSH_CACHE_FILE:-${HOME}/.cache/gssh/vms}"
 
 if (( $+functions[_gssh_refresh_cache] )); then
-  _gssh_refresh_cache
+  _gssh_refresh_cache 2>/dev/null
 fi
 
 if [[ -f "$cache_file" ]]; then

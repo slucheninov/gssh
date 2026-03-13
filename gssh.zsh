@@ -157,5 +157,9 @@ function gssh() {
   [[ -z "$zone" ]] && return 1
 
   echo "gssh: connecting to $vm | project: $project | zone: $zone"
-  gcloud compute ssh -- "$vm" --tunnel-through-iap --project="$project" --zone="$zone" "${extra_args[@]}"
+  if (( ${#extra_args} > 0 )); then
+    gcloud compute ssh "$vm" --tunnel-through-iap --project="$project" --zone="$zone" -- "${extra_args[@]}"
+  else
+    gcloud compute ssh "$vm" --tunnel-through-iap --project="$project" --zone="$zone"
+  fi
 }

@@ -31,10 +31,22 @@ gssh: connecting to mysql-primary-01 | project: production-12345678 | zone: us-c
 
 ## Installation
 
-### Option 1: install script
+### Option 1: one-liner (curl)
 
 ```bash
-git clone https://github.com/USER/gssh.git
+bash <(curl -fsSL https://raw.githubusercontent.com/slucheninov/gssh/master/install.sh)
+```
+
+or with wget:
+
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/slucheninov/gssh/master/install.sh)
+```
+
+### Option 2: git clone
+
+```bash
+git clone https://github.com/slucheninov/gssh.git
 cd gssh
 cp .env.example .env   # edit with your projects/zones
 chmod +x install.sh
@@ -42,10 +54,10 @@ chmod +x install.sh
 exec zsh
 ```
 
-### Option 2: manual
+### Option 3: manual
 
 ```bash
-git clone https://github.com/USER/gssh.git ~/.gssh
+git clone https://github.com/slucheninov/gssh.git ~/.gssh
 ```
 
 Add to `~/.zshrc` **before** `compinit`:
@@ -59,7 +71,7 @@ fpath=("${HOME}/.gssh" $fpath)
 
 Then reload: `exec zsh`
 
-### Option 3: zinit / sheldon / antidote
+### Option 4: zinit / sheldon / antidote
 
 ```zsh
 # zinit
