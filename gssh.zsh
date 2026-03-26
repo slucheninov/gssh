@@ -8,37 +8,56 @@
 : ${GSSH_CACHE_FILE:="${HOME}/.cache/gssh/vms"}
 : ${GSSH_CACHE_TTL:=86400}
 : ${GSSH_EXCLUDE_PREFIXES:=""}
+: ${GSSH_ACCOUNTS:=""}
 
 # --- Cache ---
+function _gssh_cache_file() {
+  local account="$1"
+  if [[ -n "$account" ]]; then
+    local base="${GSSH_CACHE_FILE%/*}"
+    local name="${GSSH_CACHE_FILE##*/}"
+    echo "${base}/${account//[@.]/_}_${name}"
+  else
+    echo "$GSSH_CACHE_FILE"
+  fi
+}
+
 function _gssh_refresh_cache() {
+  local account="$1"
+  local cache_file=$(_gssh_cache_file "$account")
   local now=$(date +%s)
   local cache_time=0
   local -a projects=(${(s: :)GSSH_PROJECTS})
+  local -a account_flag=()
 
-  if [[ -f "$GSSH_CACHE_FILE" ]]; then
-    cache_time=$(stat -f %m "$GSSH_CACHE_FILE" 2>/dev/null \
-              || stat -c %Y "$GSSH_CACHE_FILE" 2>/dev/null)
+  if [[ -n "$account" ]]; then
+    account_flag=(--account="$account")
   fi
 
-  if (( now - cache_time > GSSH_CACHE_TTL )) || [[ ! -f "$GSSH_CACHE_FILE" ]]; then
-    mkdir -p "$(dirname "$GSSH_CACHE_FILE")"
+  if [[ -f "$cache_file" ]]; then
+    cache_time=$(stat -f %m "$cache_file" 2>/dev/null \
+              || stat -c %Y "$cache_file" 2>/dev/null)
+  fi
+
+  if (( now - cache_time > GSSH_CACHE_TTL )) || [[ ! -f "$cache_file" ]]; then
+    mkdir -p "$(dirname "$cache_file")"
     echo "gssh: refreshing VM cache..." >&2
     local tmpfile="$(mktemp)"
     if (( ${#projects} > 0 )); then
       for p in "${projects[@]}"; do
-        gcloud compute instances list --project="$p" --format='value(name)' 2>/dev/null >> "$tmpfile"
+        gcloud compute instances list "${account_flag[@]}" --project="$p" --format='value(name)' 2>/dev/null >> "$tmpfile"
       done
     else
-      gcloud compute instances list --format='value(name)' 2>/dev/null > "$tmpfile"
+      gcloud compute instances list "${account_flag[@]}" --format='value(name)' 2>/dev/null > "$tmpfile"
     fi
 
     # Filter out excluded prefixes
     local -a excludes=(${(s: :)GSSH_EXCLUDE_PREFIXES})
     if (( ${#excludes} > 0 )); then
       local pattern="^($(IFS='|'; echo "${excludes[*]}"))"
-      grep -Ev "$pattern" "$tmpfile" > "$GSSH_CACHE_FILE"
+      grep -Ev "$pattern" "$tmpfile" > "$cache_file"
     else
-      mv "$tmpfile" "$GSSH_CACHE_FILE"
+      mv "$tmpfile" "$cache_file"
       return
     fi
     rm -f "$tmpfile"
@@ -46,8 +65,9 @@ function _gssh_refresh_cache() {
 }
 
 function _gssh_get_vms() {
-  _gssh_refresh_cache
-  cat "$GSSH_CACHE_FILE"
+  local account="$1"
+  _gssh_refresh_cache "$account"
+  cat "$(_gssh_cache_file "$account")"
 }
 
 # --- Selector helpers ---
@@ -70,8 +90,58 @@ function _gssh_select() {
 
 # --- Main function ---
 function gssh() {
-  if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-    echo "Usage: gssh <vm-name> [project] [zone]"
+  # Parse all flags first
+  local account=""
+  local cmd=""
+  local -a positional=()
+  local -a extra_args=()
+  local parsing_flags=true
+
+  while (( $# > 0 )); do
+    if [[ "$parsing_flags" == true ]]; then
+      case "$1" in
+        --help|-h)
+          cmd="help"
+          ;;
+        --list|-l)
+          cmd="list"
+          ;;
+        --refresh|-r)
+          cmd="refresh"
+          ;;
+        --account|-a)
+          shift
+          account="$1"
+          ;;
+        --)
+          shift
+          extra_args=("$@")
+          break
+          ;;
+        -*)
+          echo "gssh: unknown option: $1" >&2
+          echo "       gssh --help for more info" >&2
+          return 1
+          ;;
+        *)
+          positional+=("$1")
+          parsing_flags=false
+          ;;
+      esac
+    else
+      if [[ "$1" == "--" ]]; then
+        shift
+        extra_args=("$@")
+        break
+      fi
+      positional+=("$1")
+    fi
+    shift
+  done
+
+  # --- help ---
+  if [[ "$cmd" == "help" ]]; then
+    echo "Usage: gssh [--account <email>] <vm-name> [project] [zone]"
     echo ""
     echo "SSH into a GCP VM via IAP tunnel."
     echo "If project/zone are omitted, an interactive selector is shown."
@@ -79,57 +149,57 @@ function gssh() {
     echo "Commands:"
     echo "  gssh --list,    -l   List cached VM names"
     echo "  gssh --refresh, -r   Force-refresh the VM name cache"
+    echo "  gssh --account, -a   Select GCP account (or set GSSH_ACCOUNTS)"
     echo "  gssh --help,    -h   Show this help"
     echo ""
     echo "Extra SSH args can be passed after --:"
     echo "  gssh <vm-name> [project] [zone] -- -L 3306:localhost:3306"
     echo ""
     echo "Environment variables:"
-    echo "  GSSH_PROJECTS    Space-separated list of GCP project IDs"
-    echo "  GSSH_ZONES       Space-separated list of GCP zones (default: us-central1-{a,b,c})"
+    echo "  GSSH_PROJECTS         Space-separated list of GCP project IDs"
+    echo "  GSSH_ZONES            Space-separated list of GCP zones (default: us-central1-{a,b,c})"
+    echo "  GSSH_ACCOUNTS         Space-separated list of GCP account emails"
     echo "  GSSH_CACHE_FILE       Path to VM name cache (default: ~/.cache/gssh/vms)"
     echo "  GSSH_CACHE_TTL        Cache lifetime in seconds (default: 86400)"
     echo "  GSSH_EXCLUDE_PREFIXES Space-separated prefixes to exclude (e.g. gke-)"
     return 0
   fi
 
-  if [[ "$1" == "--list" || "$1" == "-l" ]]; then
-    _gssh_refresh_cache
-    cat "$GSSH_CACHE_FILE"
+  # Resolve account if not explicitly provided
+  local -a accounts=(${(s: :)GSSH_ACCOUNTS})
+  if [[ -z "$account" ]] && (( ${#accounts} > 1 )); then
+    account=$(_gssh_select "Select account:" "${accounts[@]}")
+    [[ -z "$account" ]] && return 1
+  elif [[ -z "$account" ]] && (( ${#accounts} == 1 )); then
+    account="${accounts[1]}"
+  fi
+
+  # --- list ---
+  if [[ "$cmd" == "list" ]]; then
+    _gssh_refresh_cache "$account"
+    cat "$(_gssh_cache_file "$account")"
     return 0
   fi
 
-  if [[ "$1" == "--refresh" || "$1" == "-r" ]]; then
-    rm -f "$GSSH_CACHE_FILE"
-    _gssh_refresh_cache
-    echo "gssh: cache refreshed ($(wc -l < "$GSSH_CACHE_FILE" | tr -d ' ') VMs)"
+  # --- refresh ---
+  if [[ "$cmd" == "refresh" ]]; then
+    local cache_file=$(_gssh_cache_file "$account")
+    rm -f "$cache_file"
+    _gssh_refresh_cache "$account"
+    echo "gssh: cache refreshed ($(wc -l < "$cache_file" | tr -d ' ') VMs)"
     return 0
   fi
 
-  if [[ -z "$1" ]]; then
-    echo "Usage: gssh <vm-name> [project] [zone]" >&2
+  # --- ssh ---
+  if (( ${#positional} == 0 )); then
+    echo "Usage: gssh [--account <email>] <vm-name> [project] [zone]" >&2
     echo "       gssh --help for more info" >&2
     return 1
   fi
 
-  local vm="$1"
-  local project="" zone=""
-  local -a extra_args=()
-  shift
-
-  # Parse: [project] [zone] [-- extra-ssh-args...]
-  while (( $# > 0 )); do
-    if [[ "$1" == "--" ]]; then
-      shift
-      extra_args=("$@")
-      break
-    elif [[ -z "$project" ]]; then
-      project="$1"
-    elif [[ -z "$zone" ]]; then
-      zone="$1"
-    fi
-    shift
-  done
+  local vm="${positional[1]}"
+  local project="${positional[2]:-}"
+  local zone="${positional[3]:-}"
 
   local -a projects=(${(s: :)GSSH_PROJECTS})
   local -a zones=(${(s: :)GSSH_ZONES})
@@ -156,10 +226,17 @@ function gssh() {
   fi
   [[ -z "$zone" ]] && return 1
 
-  echo "gssh: connecting to $vm | project: $project | zone: $zone"
-  if (( ${#extra_args} > 0 )); then
-    gcloud compute ssh "$vm" --tunnel-through-iap --project="$project" --zone="$zone" -- "${extra_args[@]}"
+  local -a account_flag=()
+  if [[ -n "$account" ]]; then
+    account_flag=(--account="$account")
+    echo "gssh: connecting to $vm | account: $account | project: $project | zone: $zone"
   else
-    gcloud compute ssh "$vm" --tunnel-through-iap --project="$project" --zone="$zone"
+    echo "gssh: connecting to $vm | project: $project | zone: $zone"
+  fi
+
+  if (( ${#extra_args} > 0 )); then
+    gcloud compute ssh "$vm" "${account_flag[@]}" --tunnel-through-iap --project="$project" --zone="$zone" -- "${extra_args[@]}"
+  else
+    gcloud compute ssh "$vm" "${account_flag[@]}" --tunnel-through-iap --project="$project" --zone="$zone"
   fi
 }

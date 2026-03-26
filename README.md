@@ -8,6 +8,7 @@ Zsh helper for SSH into GCP VMs via IAP tunnel. Interactive project/zone selecti
 - **Interactive selectors** for project and zone (fzf or built-in `select`)
 - **VM name cache** with configurable TTL (default 24h)
 - **Exclude prefixes** to filter out unwanted VMs (e.g. `gke-` nodes)
+- **Multiple GCP accounts** with interactive switching (`--account` / `-a`)
 - **Extra SSH args** via `--` (port forwarding, tunnels, etc.)
 - Works on **macOS** and **Linux**
 
@@ -97,6 +98,7 @@ cp .env.example .env
 | `GSSH_CACHE_FILE` | `~/.cache/gssh/vms` | Path to VM name cache |
 | `GSSH_CACHE_TTL` | `86400` (24h) | Cache lifetime in seconds |
 | `GSSH_EXCLUDE_PREFIXES` | _(empty)_ | Space-separated prefixes to exclude from cache (e.g. `gke-`) |
+| `GSSH_ACCOUNTS` | _(empty)_ | Space-separated GCP account emails for account switching |
 
 ## Usage
 
@@ -107,18 +109,22 @@ gssh <vm-name>
 # Specify project and zone directly
 gssh <vm-name> <project-id> <zone>
 
+# Use a specific GCP account
+gssh -a user@company.com <vm-name>
+gssh --account user@company.com <vm-name> <project-id> <zone>
+
 # Port forwarding and extra SSH args
 gssh <vm-name> -- -L 3306:localhost:3306
 gssh <vm-name> <project-id> <zone> -- -L 8080:localhost:80 -N
 
 # List cached VM names
-gssh --list
+gssh --list        # or: gssh -l
 
 # Force-refresh the VM cache
-gssh --refresh
+gssh --refresh     # or: gssh -r
 
 # Help
-gssh --help
+gssh --help        # or: gssh -h
 ```
 
 ## Tab completion

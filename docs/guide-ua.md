@@ -35,6 +35,9 @@ GSSH_ZONES="us-central1-a us-central1-b us-central1-c europe-west1-b"
 
 # Виключити VM з певним префіксом (наприклад, ноди GKE)
 GSSH_EXCLUDE_PREFIXES="gke-"
+
+# GCP акаунти для перемикання (через пробіл)
+GSSH_ACCOUNTS="user1@gmail.com user2@company.com"
 ```
 
 ## Використання
@@ -46,6 +49,10 @@ gssh my-vm-name
 # Вказати проєкт і зону явно
 gssh my-vm-name my-project us-central1-a
 
+# Використати конкретний GCP акаунт
+gssh -a user@company.com my-vm-name
+gssh --account user@company.com my-vm-name my-project us-central1-a
+
 # Прокинути порт (наприклад MySQL)
 gssh my-vm-name -- -L 3306:localhost:3306
 
@@ -53,10 +60,10 @@ gssh my-vm-name -- -L 3306:localhost:3306
 gssh mysql-<TAB>
 
 # Оновити кеш VM вручну
-gssh --refresh
+gssh --refresh     # або: gssh -r
 
 # Подивитися список VM з кешу
-gssh --list
+gssh --list        # або: gssh -l
 ```
 
 ## Оновлення
