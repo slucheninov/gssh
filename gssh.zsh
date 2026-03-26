@@ -109,6 +109,9 @@ function gssh() {
         --refresh|-r)
           cmd="refresh"
           ;;
+        --upgrade|-u)
+          cmd="upgrade"
+          ;;
         --account|-a)
           shift
           account="$1"
@@ -149,6 +152,7 @@ function gssh() {
     echo "Commands:"
     echo "  gssh --list,    -l   List cached VM names"
     echo "  gssh --refresh, -r   Force-refresh the VM name cache"
+    echo "  gssh --upgrade, -u   Update gssh to the latest version"
     echo "  gssh --account, -a   Select GCP account (or set GSSH_ACCOUNTS)"
     echo "  gssh --help,    -h   Show this help"
     echo ""
@@ -162,6 +166,48 @@ function gssh() {
     echo "  GSSH_CACHE_FILE       Path to VM name cache (default: ~/.cache/gssh/vms)"
     echo "  GSSH_CACHE_TTL        Cache lifetime in seconds (default: 86400)"
     echo "  GSSH_EXCLUDE_PREFIXES Space-separated prefixes to exclude (e.g. gke-)"
+    return 0
+  fi
+
+  # --- upgrade ---
+  if [[ "$cmd" == "upgrade" ]]; then
+    local install_dir="${GSSH_HOME:-${HOME}/.gssh}"
+    local github_raw="https://raw.githubusercontent.com/slucheninov/gssh/master"
+    local updated=false
+
+    for f in gssh.zsh _gssh; do
+      local tmpfile="$(mktemp)"
+      if command -v curl &>/dev/null; then
+        curl -fsSL "$github_raw/$f" -o "$tmpfile" 2>/dev/null
+      elif command -v wget &>/dev/null; then
+        wget -qO "$tmpfile" "$github_raw/$f" 2>/dev/null
+      else
+        echo "gssh: curl or wget is required for upgrade" >&2
+        rm -f "$tmpfile"
+        return 1
+      fi
+
+      if [[ ! -s "$tmpfile" ]]; then
+        echo "gssh: failed to download $f" >&2
+        rm -f "$tmpfile"
+        return 1
+      fi
+
+      if [[ -f "$install_dir/$f" ]] && diff -q "$tmpfile" "$install_dir/$f" &>/dev/null; then
+        rm -f "$tmpfile"
+        echo "  $f: up to date"
+      else
+        mv "$tmpfile" "$install_dir/$f"
+        echo "  $f: updated"
+        updated=true
+      fi
+    done
+
+    if [[ "$updated" == true ]]; then
+      echo "gssh: upgraded. Run 'exec zsh' to reload."
+    else
+      echo "gssh: already at the latest version."
+    fi
     return 0
   fi
 
