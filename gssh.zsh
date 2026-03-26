@@ -2,6 +2,8 @@
 # gssh - GCP IAP SSH helper with fzf support
 # https://github.com/USER/gssh
 
+GSSH_VERSION="1.0.0"
+
 # --- Configuration defaults (override in .zshrc or .env) ---
 : ${GSSH_ZONES:="us-central1-a us-central1-b us-central1-c"}
 : ${GSSH_PROJECTS:=""}
@@ -112,6 +114,15 @@ function gssh() {
         --upgrade|-u)
           cmd="upgrade"
           ;;
+        --version|-V)
+          cmd="version"
+          ;;
+        --dry-run|-d)
+          cmd="dry-run"
+          ;;
+        --copy|-c)
+          cmd="copy"
+          ;;
         --account|-a)
           shift
           account="$1"
@@ -153,6 +164,9 @@ function gssh() {
     echo "  gssh --list,    -l   List cached VM names"
     echo "  gssh --refresh, -r   Force-refresh the VM name cache"
     echo "  gssh --upgrade, -u   Update gssh to the latest version"
+    echo "  gssh --version, -V   Show version"
+    echo "  gssh --dry-run, -d   Show gcloud command without executing"
+    echo "  gssh --copy,    -c   Copy SSH command to clipboard"
     echo "  gssh --account, -a   Select GCP account (or set GSSH_ACCOUNTS)"
     echo "  gssh --help,    -h   Show this help"
     echo ""
@@ -166,6 +180,12 @@ function gssh() {
     echo "  GSSH_CACHE_FILE       Path to VM name cache (default: ~/.cache/gssh/vms)"
     echo "  GSSH_CACHE_TTL        Cache lifetime in seconds (default: 86400)"
     echo "  GSSH_EXCLUDE_PREFIXES Space-separated prefixes to exclude (e.g. gke-)"
+    return 0
+  fi
+
+  # --- version ---
+  if [[ "$cmd" == "version" ]]; then
+    echo "gssh $GSSH_VERSION"
     return 0
   fi
 
@@ -275,14 +295,41 @@ function gssh() {
   local -a account_flag=()
   if [[ -n "$account" ]]; then
     account_flag=(--account="$account")
+  fi
+
+  local -a ssh_cmd=(gcloud compute ssh "$vm" "${account_flag[@]}" --tunnel-through-iap --project="$project" --zone="$zone")
+  if (( ${#extra_args} > 0 )); then
+    ssh_cmd+=(-- "${extra_args[@]}")
+  fi
+
+  # --- dry-run ---
+  if [[ "$cmd" == "dry-run" ]]; then
+    echo "${ssh_cmd[*]}"
+    return 0
+  fi
+
+  # --- copy ---
+  if [[ "$cmd" == "copy" ]]; then
+    if command -v pbcopy &>/dev/null; then
+      echo "${ssh_cmd[*]}" | pbcopy
+    elif command -v xclip &>/dev/null; then
+      echo "${ssh_cmd[*]}" | xclip -selection clipboard
+    elif command -v xsel &>/dev/null; then
+      echo "${ssh_cmd[*]}" | xsel --clipboard
+    else
+      echo "gssh: no clipboard utility found (pbcopy/xclip/xsel)" >&2
+      echo "${ssh_cmd[*]}"
+      return 1
+    fi
+    echo "gssh: command copied to clipboard"
+    return 0
+  fi
+
+  # --- connect ---
+  if [[ -n "$account" ]]; then
     echo "gssh: connecting to $vm | account: $account | project: $project | zone: $zone"
   else
     echo "gssh: connecting to $vm | project: $project | zone: $zone"
   fi
-
-  if (( ${#extra_args} > 0 )); then
-    gcloud compute ssh "$vm" "${account_flag[@]}" --tunnel-through-iap --project="$project" --zone="$zone" -- "${extra_args[@]}"
-  else
-    gcloud compute ssh "$vm" "${account_flag[@]}" --tunnel-through-iap --project="$project" --zone="$zone"
-  fi
+  "${ssh_cmd[@]}"
 }

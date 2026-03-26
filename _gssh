@@ -1,16 +1,30 @@
 #compdef gssh
 
-# Tab-completion for gssh VM names
+# Tab-completion for gssh
 # Loaded automatically by compinit via fpath
 
 local -a vms
 local cache_file="${GSSH_CACHE_FILE:-${HOME}/.cache/gssh/vms}"
 
-if (( $+functions[_gssh_refresh_cache] )); then
-  _gssh_refresh_cache 2>/dev/null
-fi
+_arguments \
+  '(-h --help)'{-h,--help}'[Show help]' \
+  '(-V --version)'{-V,--version}'[Show version]' \
+  '(-l --list)'{-l,--list}'[List cached VMs]' \
+  '(-r --refresh)'{-r,--refresh}'[Force refresh cache]' \
+  '(-u --upgrade)'{-u,--upgrade}'[Upgrade gssh]' \
+  '(-d --dry-run)'{-d,--dry-run}'[Show command without executing]' \
+  '(-c --copy)'{-c,--copy}'[Copy command to clipboard]' \
+  '(-a --account)'{-a,--account}'[GCP account]:account:' \
+  '*:vm name:->vms'
 
-if [[ -f "$cache_file" ]]; then
-  vms=(${(f)"$(cat "$cache_file")"})
-  _describe 'GCP VM instances' vms
-fi
+case $state in
+  vms)
+    if (( $+functions[_gssh_refresh_cache] )); then
+      _gssh_refresh_cache 2>/dev/null
+    fi
+    if [[ -f "$cache_file" ]]; then
+      vms=(${(f)"$(cat "$cache_file")"})
+      _describe 'GCP VM instances' vms
+    fi
+    ;;
+esac
