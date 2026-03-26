@@ -77,9 +77,9 @@ function gssh() {
     echo "If project/zone are omitted, an interactive selector is shown."
     echo ""
     echo "Commands:"
-    echo "  gssh --list      List cached VM names"
-    echo "  gssh --refresh   Force-refresh the VM name cache"
-    echo "  gssh --help      Show this help"
+    echo "  gssh --list,    -l   List cached VM names"
+    echo "  gssh --refresh, -r   Force-refresh the VM name cache"
+    echo "  gssh --help,    -h   Show this help"
     echo ""
     echo "Extra SSH args can be passed after --:"
     echo "  gssh <vm-name> [project] [zone] -- -L 3306:localhost:3306"
@@ -99,7 +99,7 @@ function gssh() {
     return 0
   fi
 
-  if [[ "$1" == "--refresh" ]]; then
+  if [[ "$1" == "--refresh" || "$1" == "-r" ]]; then
     rm -f "$GSSH_CACHE_FILE"
     _gssh_refresh_cache
     echo "gssh: cache refreshed ($(wc -l < "$GSSH_CACHE_FILE" | tr -d ' ') VMs)"
