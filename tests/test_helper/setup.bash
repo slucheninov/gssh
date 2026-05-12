@@ -9,6 +9,8 @@ setup() {
   export GSSH_EXCLUDE_PREFIXES=""
   export GSSH_CACHE_TTL=86400
   export GSSH_MOCK_FAIL_LIST=0
+  unset GSSH_HOME
+  unset GSSH_MOCK_FAIL_DOWNLOAD
 
   # Stub gcloud
   mkdir -p "${TEST_TEMP_DIR}/bin"
@@ -48,16 +50,9 @@ teardown() {
 
 # Helper: run gssh in zsh subshell with test env
 run_gssh() {
-  run zsh -c "
-    export GSSH_PROJECTS='${GSSH_PROJECTS}'
-    export GSSH_ZONES='${GSSH_ZONES}'
-    export GSSH_ACCOUNTS='${GSSH_ACCOUNTS}'
-    export GSSH_EXCLUDE_PREFIXES='${GSSH_EXCLUDE_PREFIXES}'
-    export GSSH_CACHE_FILE='${GSSH_CACHE_FILE}'
-    export GSSH_CACHE_TTL='${GSSH_CACHE_TTL}'
-    export GSSH_MOCK_FAIL_LIST='${GSSH_MOCK_FAIL_LIST}'
-    export PATH='${TEST_TEMP_DIR}/bin:${PATH}'
-    source '${GSSH_ROOT}/gssh.zsh'
-    gssh $*
-  "
+  run zsh -c '
+    export PATH="${TEST_TEMP_DIR}/bin:${PATH}"
+    source "${GSSH_ROOT}/gssh.zsh"
+    gssh "$@"
+  ' gssh-test "$@"
 }

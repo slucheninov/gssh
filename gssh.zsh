@@ -343,34 +343,78 @@ function gssh() {
     local install_dir="${GSSH_HOME:-${HOME}/.gssh}"
     local github_raw="https://raw.githubusercontent.com/slucheninov/gssh/master"
     local updated=false
+    local tmpdir tmpfile f staged
+    local -a upgrade_files=(gssh.zsh _gssh)
+    local -a changed_files=()
+    local -a staged_paths=()
+    local -A staged_by_file=()
 
-    for f in gssh.zsh _gssh; do
-      local tmpfile="$(mktemp)"
+    tmpdir="$(mktemp -d)"
+    if [[ -z "$tmpdir" || ! -d "$tmpdir" ]]; then
+      echo "gssh: failed to create temporary upgrade directory" >&2
+      return 1
+    fi
+
+    for f in "${upgrade_files[@]}"; do
+      tmpfile="$tmpdir/$f"
       if command -v curl &>/dev/null; then
         curl -fsSL "$github_raw/$f" -o "$tmpfile" 2>/dev/null
       elif command -v wget &>/dev/null; then
         wget -qO "$tmpfile" "$github_raw/$f" 2>/dev/null
       else
         echo "gssh: curl or wget is required for upgrade" >&2
-        rm -f "$tmpfile"
+        rm -rf "$tmpdir"
         return 1
       fi
 
       if [[ ! -s "$tmpfile" ]]; then
         echo "gssh: failed to download $f" >&2
-        rm -f "$tmpfile"
+        rm -rf "$tmpdir"
         return 1
       fi
+    done
 
-      if [[ -f "$install_dir/$f" ]] && diff -q "$tmpfile" "$install_dir/$f" &>/dev/null; then
-        rm -f "$tmpfile"
-        echo "  $f: up to date"
-      else
-        mv "$tmpfile" "$install_dir/$f"
-        echo "  $f: updated"
-        updated=true
+    mkdir -p "$install_dir" || {
+      echo "gssh: failed to create install directory: $install_dir" >&2
+      rm -rf "$tmpdir"
+      return 1
+    }
+
+    for f in "${upgrade_files[@]}"; do
+      tmpfile="$tmpdir/$f"
+      [[ -f "$install_dir/$f" ]] && diff -q "$tmpfile" "$install_dir/$f" &>/dev/null && continue
+
+      staged="$install_dir/.$f.tmp.$$"
+      if ! cp "$tmpfile" "$staged"; then
+        echo "gssh: failed to stage $f for upgrade" >&2
+        (( ${#staged_paths} > 0 )) && rm -f "${staged_paths[@]}"
+        rm -rf "$tmpdir"
+        return 1
+      fi
+      changed_files+=("$f")
+      staged_paths+=("$staged")
+      staged_by_file[$f]="$staged"
+    done
+
+    for f in "${changed_files[@]}"; do
+      if ! mv "${staged_by_file[$f]}" "$install_dir/$f"; then
+        echo "gssh: failed to install $f" >&2
+        (( ${#staged_paths} > 0 )) && rm -f "${staged_paths[@]}"
+        rm -rf "$tmpdir"
+        return 1
       fi
     done
+
+    for f in "${upgrade_files[@]}"; do
+      if (( ${changed_files[(Ie)$f]} > 0 )); then
+        echo "  $f: updated"
+        updated=true
+      else
+        echo "  $f: up to date"
+      fi
+    done
+
+    rm -rf "$tmpdir"
 
     if [[ "$updated" == true ]]; then
       echo "gssh: upgraded. Run 'exec zsh' to reload."
