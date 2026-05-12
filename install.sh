@@ -104,7 +104,7 @@ echo "Files installed to $INSTALL_DIR"
 echo ""
 
 if grep -q "gssh.zsh" "${HOME}/.zshrc" 2>/dev/null; then
-  echo "~/.zshrc already contains gssh config. Skipping."
+  echo "$HOME/.zshrc already contains gssh config. Skipping."
 else
   echo "Add the following to your ~/.zshrc (BEFORE compinit):"
   echo ""
