@@ -121,12 +121,12 @@ else
         echo "$SNIPPET"
         echo ""
         tail -n +"$LINE" "${HOME}/.zshrc"
-      } > "${HOME}/.zshrc.tmp"
+      } >"${HOME}/.zshrc.tmp"
       mv "${HOME}/.zshrc.tmp" "${HOME}/.zshrc"
       echo "Inserted before compinit in ~/.zshrc"
     else
-      echo "" >> "${HOME}/.zshrc"
-      echo "$SNIPPET" >> "${HOME}/.zshrc"
+      echo "" >>"${HOME}/.zshrc"
+      echo "$SNIPPET" >>"${HOME}/.zshrc"
       echo "Appended to ~/.zshrc"
     fi
   fi
