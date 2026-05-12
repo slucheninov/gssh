@@ -3,10 +3,54 @@
 # Tab-completion for gssh
 # Loaded automatically by compinit via fpath
 
-local -a vms
-local cache_file="${GSSH_CACHE_FILE:-${HOME}/.cache/gssh/vms}"
+local curcontext="$curcontext" state line
+local -a accounts projects zones vms positional
+local account vm project
 
-_arguments \
+_gssh_completion_account() {
+  local i
+  local -a configured_accounts=(${(s: :)GSSH_ACCOUNTS})
+
+  for (( i = 1; i < CURRENT; i++ )); do
+    if [[ "${words[i]}" == "--account" || "${words[i]}" == "-a" ]]; then
+      if (( i + 1 < CURRENT )); then
+        print -r -- "${words[i + 1]}"
+        return
+      fi
+    fi
+  done
+
+  if (( ${#configured_accounts} == 1 )); then
+    print -r -- "${configured_accounts[1]}"
+  fi
+}
+
+_gssh_completion_positionals() {
+  local i skip_next=false
+
+  for (( i = 2; i < CURRENT; i++ )); do
+    if [[ "$skip_next" == true ]]; then
+      skip_next=false
+      continue
+    fi
+
+    case "${words[i]}" in
+      --)
+        break
+        ;;
+      --account|-a)
+        skip_next=true
+        ;;
+      -*)
+        ;;
+      *)
+        positional+=("${words[i]}")
+        ;;
+    esac
+  done
+}
+
+_arguments -C \
   '(-h --help)'{-h,--help}'[Show help]' \
   '(-V --version)'{-V,--version}'[Show version]' \
   '(-l --list)'{-l,--list}'[List cached VMs]' \
@@ -14,17 +58,47 @@ _arguments \
   '(-u --upgrade)'{-u,--upgrade}'[Upgrade gssh]' \
   '(-d --dry-run)'{-d,--dry-run}'[Show command without executing]' \
   '(-c --copy)'{-c,--copy}'[Copy command to clipboard]' \
-  '(-a --account)'{-a,--account}'[GCP account]:account:' \
-  '*:vm name:->vms'
+  '(-a --account)'{-a,--account}'[GCP account]:account:->accounts' \
+  '1:vm name:->vms' \
+  '2:project:->projects' \
+  '3:zone:->zones' \
+  '*::ssh args:->args'
+
+account=$(_gssh_completion_account)
+_gssh_completion_positionals
+vm="${positional[1]:-}"
+project="${positional[2]:-}"
 
 case $state in
+  accounts)
+    accounts=(${(s: :)GSSH_ACCOUNTS})
+    _describe 'GCP accounts' accounts
+    ;;
   vms)
-    if (( $+functions[_gssh_refresh_cache] )); then
-      _gssh_refresh_cache 2>/dev/null
-    fi
-    if [[ -f "$cache_file" ]]; then
-      vms=(${(f)"$(cat "$cache_file")"})
+    if (( $+functions[_gssh_cached_vms] )); then
+      vms=(${(f)"$(_gssh_cached_vms "$account" 2>/dev/null)"})
       _describe 'GCP VM instances' vms
     fi
+    ;;
+  projects)
+    if (( $+functions[_gssh_cached_projects] )); then
+      projects=(${(f)"$(_gssh_cached_projects "$account" "$vm" 2>/dev/null)"})
+    fi
+    if (( ${#projects} == 0 )); then
+      projects=(${(s: :)GSSH_PROJECTS})
+    fi
+    _describe 'GCP projects' projects
+    ;;
+  zones)
+    if (( $+functions[_gssh_cached_zones] )); then
+      zones=(${(f)"$(_gssh_cached_zones "$account" "$vm" "$project" 2>/dev/null)"})
+    fi
+    if (( ${#zones} == 0 )); then
+      zones=(${(s: :)GSSH_ZONES})
+    fi
+    _describe 'GCP zones' zones
+    ;;
+  args)
+    _message 'SSH arguments'
     ;;
 esac

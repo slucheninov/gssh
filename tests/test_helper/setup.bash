@@ -8,15 +8,21 @@ setup() {
   export GSSH_ACCOUNTS=""
   export GSSH_EXCLUDE_PREFIXES=""
   export GSSH_CACHE_TTL=86400
+  export GSSH_MOCK_FAIL_LIST=0
 
   # Stub gcloud
   mkdir -p "${TEST_TEMP_DIR}/bin"
   cat > "${TEST_TEMP_DIR}/bin/gcloud" << 'STUB'
 #!/usr/bin/env bash
 if [[ "$*" == *"instances list"* ]]; then
-  echo "vm-web-01"
-  echo "vm-api-01"
-  echo "vm-db-01"
+  if [[ "${GSSH_MOCK_FAIL_LIST:-0}" == "1" ]]; then
+    echo "mock list failure" >&2
+    exit 1
+  fi
+  echo "vm-web-01 us-central1-a"
+  echo "vm-api-01 us-central1-a"
+  echo "vm-db-01 us-central1-b"
+  echo "vm.db-01 us-central1-c"
   exit 0
 fi
 if [[ "$*" == *"compute ssh"* ]]; then
@@ -49,6 +55,7 @@ run_gssh() {
     export GSSH_EXCLUDE_PREFIXES='${GSSH_EXCLUDE_PREFIXES}'
     export GSSH_CACHE_FILE='${GSSH_CACHE_FILE}'
     export GSSH_CACHE_TTL='${GSSH_CACHE_TTL}'
+    export GSSH_MOCK_FAIL_LIST='${GSSH_MOCK_FAIL_LIST}'
     export PATH='${TEST_TEMP_DIR}/bin:${PATH}'
     source '${GSSH_ROOT}/gssh.zsh'
     gssh $*

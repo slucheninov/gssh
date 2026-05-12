@@ -93,6 +93,7 @@ else
 fi
 
 # --- .zshrc snippet ---
+# shellcheck disable=SC2016
 SNIPPET='# gssh - GCP IAP SSH helper
 [[ -f "${HOME}/.gssh/gssh.zsh" ]] && source "${HOME}/.gssh/gssh.zsh"
 [[ -f "${HOME}/.gssh/.env" ]] && source "${HOME}/.gssh/.env"

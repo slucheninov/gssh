@@ -38,6 +38,12 @@ load test_helper/setup
   [[ "${output}" == *"unknown option"* ]]
 }
 
+@test "--account without value returns error" {
+  run_gssh --account
+  [ "$status" -eq 1 ]
+  [[ "${output}" == *"--account requires an email"* ]]
+}
+
 @test "no arguments prints usage hint" {
   run_gssh
   [ "$status" -eq 1 ]
@@ -56,6 +62,12 @@ load test_helper/setup
   run_gssh -d my-vm test-project-1 us-central1-a
   [ "$status" -eq 0 ]
   [[ "${output}" == *"gcloud compute ssh"* ]]
+}
+
+@test "--dry-run uses single configured zone without selector" {
+  run_gssh --dry-run my-vm test-project-1
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"--zone=us-central1-a"* ]]
 }
 
 @test "--dry-run includes account flag" {
