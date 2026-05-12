@@ -16,60 +16,205 @@ GSSH_VERSION="1.0.0"
 function _gssh_cache_file() {
   local account="$1"
   if [[ -n "$account" ]]; then
-    local base="${GSSH_CACHE_FILE%/*}"
-    local name="${GSSH_CACHE_FILE##*/}"
-    echo "${base}/${account//[@.]/_}_${name}"
+    local base name safe_account
+    if [[ "$GSSH_CACHE_FILE" == */* ]]; then
+      base="${GSSH_CACHE_FILE%/*}"
+      name="${GSSH_CACHE_FILE##*/}"
+    else
+      base="."
+      name="$GSSH_CACHE_FILE"
+    fi
+    safe_account="${account//[^A-Za-z0-9_-]/_}"
+    echo "${base}/${safe_account}_${name}"
   else
     echo "$GSSH_CACHE_FILE"
   fi
 }
 
+function _gssh_cache_mtime() {
+  local cache_file="$1"
+  stat -f %m "$cache_file" 2>/dev/null \
+    || stat -c %Y "$cache_file" 2>/dev/null
+}
+
+function _gssh_cache_is_legacy() {
+  local cache_file="$1"
+  local line
+
+  [[ ! -s "$cache_file" ]] && return 1
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    [[ "$line" != *$'\t'* ]]
+    return
+  done < "$cache_file"
+  return 1
+}
+
+function _gssh_cache_needs_refresh() {
+  local cache_file="$1"
+  local force="${2:-false}"
+  local now cache_time
+
+  [[ "$force" == true ]] && return 0
+  [[ ! -f "$cache_file" ]] && return 0
+  _gssh_cache_is_legacy "$cache_file" && return 0
+
+  now=$(date +%s)
+  cache_time=$(_gssh_cache_mtime "$cache_file")
+  [[ -z "$cache_time" ]] && return 0
+
+  (( now - cache_time > GSSH_CACHE_TTL ))
+}
+
+function _gssh_is_excluded() {
+  local name="$1"
+  local prefix
+  local -a excludes=(${(s: :)GSSH_EXCLUDE_PREFIXES})
+
+  for prefix in "${excludes[@]}"; do
+    [[ -z "$prefix" ]] && continue
+    if [[ "${name[1,${#prefix}]}" == "$prefix" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+function _gssh_append_cache_rows() {
+  local tmpfile="$1"
+  local project="$2"
+  local output="$3"
+  local line name zone
+  local tab=$'\t'
+  local -a cols
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    cols=(${=line})
+    name="${cols[1]:-}"
+    zone="${cols[2]:-}"
+    [[ -z "$name" ]] && continue
+    _gssh_is_excluded "$name" && continue
+    print -r -- "${name}${tab}${project}${tab}${zone}" >> "$tmpfile"
+  done <<< "$output"
+}
+
+function _gssh_fetch_project_instances() {
+  local account="$1"
+  local project="$2"
+  local tmpfile="$3"
+  local output
+  local -a account_flag=()
+  local -a project_flag=()
+
+  [[ -n "$account" ]] && account_flag=(--account="$account")
+  [[ -n "$project" ]] && project_flag=(--project="$project")
+
+  if ! output=$(gcloud compute instances list "${account_flag[@]}" "${project_flag[@]}" --format='value(name,zone.basename())' 2>&1); then
+    if [[ -n "$project" ]]; then
+      echo "gssh: failed to list VMs for project $project: $output" >&2
+    else
+      echo "gssh: failed to list VMs: $output" >&2
+    fi
+    return 1
+  fi
+
+  _gssh_append_cache_rows "$tmpfile" "$project" "$output"
+}
+
 function _gssh_refresh_cache() {
   local account="$1"
+  local force="${2:-false}"
   local cache_file=$(_gssh_cache_file "$account")
-  local now=$(date +%s)
-  local cache_time=0
   local -a projects=(${(s: :)GSSH_PROJECTS})
-  local -a account_flag=()
+  local tmpfile default_project p failed=false
 
-  if [[ -n "$account" ]]; then
-    account_flag=(--account="$account")
+  if ! _gssh_cache_needs_refresh "$cache_file" "$force"; then
+    return 0
   fi
 
-  if [[ -f "$cache_file" ]]; then
-    cache_time=$(stat -f %m "$cache_file" 2>/dev/null \
-              || stat -c %Y "$cache_file" 2>/dev/null)
+  mkdir -p "$(dirname "$cache_file")"
+  echo "gssh: refreshing VM cache..." >&2
+  tmpfile="$(mktemp)"
+
+  if (( ${#projects} > 0 )); then
+    for p in "${projects[@]}"; do
+      _gssh_fetch_project_instances "$account" "$p" "$tmpfile" || failed=true
+    done
+  else
+    default_project=$(gcloud config get-value project 2>/dev/null)
+    [[ "$default_project" == "(unset)" ]] && default_project=""
+    _gssh_fetch_project_instances "$account" "$default_project" "$tmpfile" || failed=true
   fi
 
-  if (( now - cache_time > GSSH_CACHE_TTL )) || [[ ! -f "$cache_file" ]]; then
-    mkdir -p "$(dirname "$cache_file")"
-    echo "gssh: refreshing VM cache..." >&2
-    local tmpfile="$(mktemp)"
-    if (( ${#projects} > 0 )); then
-      for p in "${projects[@]}"; do
-        gcloud compute instances list "${account_flag[@]}" --project="$p" --format='value(name)' 2>/dev/null >> "$tmpfile"
-      done
-    else
-      gcloud compute instances list "${account_flag[@]}" --format='value(name)' 2>/dev/null > "$tmpfile"
-    fi
-
-    # Filter out excluded prefixes
-    local -a excludes=(${(s: :)GSSH_EXCLUDE_PREFIXES})
-    if (( ${#excludes} > 0 )); then
-      local pattern="^($(IFS='|'; echo "${excludes[*]}"))"
-      grep -Ev "$pattern" "$tmpfile" > "$cache_file"
-    else
-      mv "$tmpfile" "$cache_file"
-      return
-    fi
+  if [[ "$failed" == true ]]; then
     rm -f "$tmpfile"
+    return 1
   fi
+
+  mv "$tmpfile" "$cache_file"
+}
+
+function _gssh_cached_vms() {
+  local account="$1"
+  local cache_file=$(_gssh_cache_file "$account")
+  local name project zone
+  local -A seen=()
+
+  _gssh_refresh_cache "$account" || return 1
+  while IFS=$'\t' read -r name project zone; do
+    [[ -z "$name" || -n "${seen[$name]}" ]] && continue
+    seen[$name]=1
+    print -r -- "$name"
+  done < "$cache_file"
+}
+
+function _gssh_cached_projects() {
+  local account="$1"
+  local vm="${2:-}"
+  local cache_file=$(_gssh_cache_file "$account")
+  local name project zone
+  local -A seen=()
+
+  _gssh_refresh_cache "$account" || return 1
+  while IFS=$'\t' read -r name project zone; do
+    [[ -z "$project" ]] && continue
+    [[ -n "$vm" && "$name" != "$vm" ]] && continue
+    if [[ -z "${seen[$project]}" ]]; then
+      seen[$project]=1
+      print -r -- "$project"
+    fi
+  done < "$cache_file"
+}
+
+function _gssh_cached_zones() {
+  local account="$1"
+  local vm="${2:-}"
+  local project_filter="${3:-}"
+  local cache_file=$(_gssh_cache_file "$account")
+  local name project zone
+  local -A seen=()
+
+  _gssh_refresh_cache "$account" || return 1
+  while IFS=$'\t' read -r name project zone; do
+    [[ -z "$zone" ]] && continue
+    [[ -n "$vm" && "$name" != "$vm" ]] && continue
+    [[ -n "$project_filter" && "$project" != "$project_filter" ]] && continue
+    if [[ -z "${seen[$zone]}" ]]; then
+      seen[$zone]=1
+      print -r -- "$zone"
+    fi
+  done < "$cache_file"
 }
 
 function _gssh_get_vms() {
   local account="$1"
-  _gssh_refresh_cache "$account"
-  cat "$(_gssh_cache_file "$account")"
+  _gssh_cached_vms "$account"
+}
+
+function _gssh_shell_join() {
+  local -a quoted=("${(@q)@}")
+  print -r -- "${(j: :)quoted}"
 }
 
 # --- Selector helpers ---
@@ -124,6 +269,10 @@ function gssh() {
           cmd="copy"
           ;;
         --account|-a)
+          if (( $# < 2 )) || [[ "$2" == -* ]]; then
+            echo "gssh: --account requires an email" >&2
+            return 1
+          fi
           shift
           account="$1"
           ;;
@@ -242,16 +391,14 @@ function gssh() {
 
   # --- list ---
   if [[ "$cmd" == "list" ]]; then
-    _gssh_refresh_cache "$account"
-    cat "$(_gssh_cache_file "$account")"
+    _gssh_get_vms "$account"
     return 0
   fi
 
   # --- refresh ---
   if [[ "$cmd" == "refresh" ]]; then
     local cache_file=$(_gssh_cache_file "$account")
-    rm -f "$cache_file"
-    _gssh_refresh_cache "$account"
+    _gssh_refresh_cache "$account" true || return 1
     echo "gssh: cache refreshed ($(wc -l < "$cache_file" | tr -d ' ') VMs)"
     return 0
   fi
@@ -282,13 +429,25 @@ function gssh() {
     elif (( ${#projects} == 1 )); then
       project="${projects[1]}"
     else
-      project=$(_gssh_select "Select project:" "${projects[@]}")
+      local -a cached_projects=(${(f)"$(_gssh_cached_projects "$account" "$vm" 2>/dev/null)"})
+      if (( ${#cached_projects} == 1 )); then
+        project="${cached_projects[1]}"
+      else
+        project=$(_gssh_select "Select project:" "${projects[@]}")
+      fi
     fi
   fi
   [[ -z "$project" ]] && return 1
 
   if [[ -z "$zone" ]]; then
-    zone=$(_gssh_select "Select zone:" "${zones[@]}")
+    local -a cached_zones=(${(f)"$(_gssh_cached_zones "$account" "$vm" "$project" 2>/dev/null)"})
+    if (( ${#cached_zones} == 1 )); then
+      zone="${cached_zones[1]}"
+    elif (( ${#zones} == 1 )); then
+      zone="${zones[1]}"
+    else
+      zone=$(_gssh_select "Select zone:" "${zones[@]}")
+    fi
   fi
   [[ -z "$zone" ]] && return 1
 
@@ -304,21 +463,22 @@ function gssh() {
 
   # --- dry-run ---
   if [[ "$cmd" == "dry-run" ]]; then
-    echo "${ssh_cmd[*]}"
+    _gssh_shell_join "${ssh_cmd[@]}"
     return 0
   fi
 
   # --- copy ---
   if [[ "$cmd" == "copy" ]]; then
+    local display_cmd="$(_gssh_shell_join "${ssh_cmd[@]}")"
     if command -v pbcopy &>/dev/null; then
-      echo "${ssh_cmd[*]}" | pbcopy
+      echo "$display_cmd" | pbcopy
     elif command -v xclip &>/dev/null; then
-      echo "${ssh_cmd[*]}" | xclip -selection clipboard
+      echo "$display_cmd" | xclip -selection clipboard
     elif command -v xsel &>/dev/null; then
-      echo "${ssh_cmd[*]}" | xsel --clipboard
+      echo "$display_cmd" | xsel --clipboard
     else
       echo "gssh: no clipboard utility found (pbcopy/xclip/xsel)" >&2
-      echo "${ssh_cmd[*]}"
+      echo "$display_cmd"
       return 1
     fi
     echo "gssh: command copied to clipboard"

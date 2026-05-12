@@ -15,10 +15,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y bats zsh
+        run: sudo apt-get update && sudo apt-get install -y bats shellcheck shfmt zsh
+
+      - name: Run lint
+        run: make lint
 
       - name: Run tests
-        run: bats tests/*.bats
+        run: make test
 
   release:
     needs: test
