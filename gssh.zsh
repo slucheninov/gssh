@@ -122,36 +122,68 @@ function _gssh_fetch_project_instances() {
   _gssh_append_cache_rows "$tmpfile" "$project" "$output"
 }
 
+function _gssh_spinner() {
+  local pid="$1"
+  local msg="${2:-loading...}"
+  local -a frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+  local i=1
+
+  if [[ ! -w /dev/tty ]]; then
+    echo "  $msg" >&2
+    return 0
+  fi
+
+  while kill -0 "$pid" 2>/dev/null; do
+    printf '\r\033[K  %s %s' "${frames[i]}" "$msg" >/dev/tty
+    i=$(( i % ${#frames} + 1 ))
+    sleep 0.1
+  done
+  printf '\r\033[K' >/dev/tty
+}
+
 function _gssh_refresh_cache() {
   local account="$1"
   local force="${2:-false}"
   local cache_file=$(_gssh_cache_file "$account")
   local -a projects=(${(s: :)GSSH_PROJECTS})
-  local tmpfile default_project p failed=false
+  local tmpfile errfile
 
   if ! _gssh_cache_needs_refresh "$cache_file" "$force"; then
     return 0
   fi
 
   mkdir -p "$(dirname "$cache_file")"
-  echo "gssh: refreshing VM cache..." >&2
   tmpfile="$(mktemp)"
+  errfile="$(mktemp)"
 
-  if (( ${#projects} > 0 )); then
-    for p in "${projects[@]}"; do
-      _gssh_fetch_project_instances "$account" "$p" "$tmpfile" || failed=true
-    done
-  else
-    default_project=$(gcloud config get-value project 2>/dev/null)
-    [[ "$default_project" == "(unset)" ]] && default_project=""
-    _gssh_fetch_project_instances "$account" "$default_project" "$tmpfile" || failed=true
-  fi
+  (
+    local p _default_project _failed=false
+    if (( ${#projects} > 0 )); then
+      for p in "${projects[@]}"; do
+        _gssh_fetch_project_instances "$account" "$p" "$tmpfile" || _failed=true
+      done
+    else
+      _default_project=$(gcloud config get-value project 2>/dev/null)
+      [[ "$_default_project" == "(unset)" ]] && _default_project=""
+      _gssh_fetch_project_instances "$account" "$_default_project" "$tmpfile" || _failed=true
+    fi
+    [[ "$_failed" == true ]] && exit 1
+    exit 0
+  ) 2>"$errfile" &
+  local bg_pid=$!
 
-  if [[ "$failed" == true ]]; then
-    rm -f "$tmpfile"
+  _gssh_spinner "$bg_pid" "gssh: refreshing VM cache..."
+
+  wait "$bg_pid"
+  local rc=$?
+
+  if [[ $rc -ne 0 ]]; then
+    [[ -s "$errfile" ]] && cat "$errfile" >&2
+    rm -f "$tmpfile" "$errfile"
     return 1
   fi
 
+  rm -f "$errfile"
   mv "$tmpfile" "$cache_file"
 }
 
