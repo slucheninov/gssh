@@ -83,3 +83,10 @@ load test_helper/setup
   [[ "${output}" == *"-L"* ]]
   [[ "${output}" == *"3306:localhost:3306"* ]]
 }
+
+@test "--dry-run shell-quotes extra args with spaces" {
+  run_gssh --dry-run my-vm test-project-1 us-central1-a -- -o "ProxyCommand=ssh host"
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"-o"* ]]
+  [[ "${output}" == *"ProxyCommand=ssh\\ host"* ]]
+}
