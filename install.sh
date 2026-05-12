@@ -104,7 +104,7 @@ echo "Files installed to $INSTALL_DIR"
 echo ""
 
 if grep -q "gssh.zsh" "${HOME}/.zshrc" 2>/dev/null; then
-  echo "~/.zshrc already contains gssh config. Skipping."
+  echo "$HOME/.zshrc already contains gssh config. Skipping."
 else
   echo "Add the following to your ~/.zshrc (BEFORE compinit):"
   echo ""
@@ -121,12 +121,12 @@ else
         echo "$SNIPPET"
         echo ""
         tail -n +"$LINE" "${HOME}/.zshrc"
-      } > "${HOME}/.zshrc.tmp"
+      } >"${HOME}/.zshrc.tmp"
       mv "${HOME}/.zshrc.tmp" "${HOME}/.zshrc"
       echo "Inserted before compinit in ~/.zshrc"
     else
-      echo "" >> "${HOME}/.zshrc"
-      echo "$SNIPPET" >> "${HOME}/.zshrc"
+      echo "" >>"${HOME}/.zshrc"
+      echo "$SNIPPET" >>"${HOME}/.zshrc"
       echo "Appended to ~/.zshrc"
     fi
   fi
