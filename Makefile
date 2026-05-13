@@ -1,4 +1,4 @@
-.PHONY: test lint check install
+.PHONY: test lint check install release
 
 test:
 	bats tests/*.bats
@@ -15,3 +15,19 @@ install:
 	mkdir -p "$${GSSH_HOME:-$$HOME/.gssh}"
 	cp gssh.zsh _gssh "$${GSSH_HOME:-$$HOME/.gssh}/"
 	@echo "Installed. Run 'exec zsh' to reload."
+
+release:
+ifndef VERSION
+	$(error Usage: make release VERSION=1.2.0)
+endif
+	@if git diff --quiet && git diff --cached --quiet; then true; else \
+		echo "Error: working tree is dirty. Commit or stash changes first." >&2; exit 1; \
+	fi
+	@echo "Releasing v$(VERSION)..."
+	sed -i.bak 's/^GSSH_VERSION=".*"/GSSH_VERSION="$(VERSION)"/' gssh.zsh && rm -f gssh.zsh.bak
+	git add gssh.zsh
+	git commit -m "release: v$(VERSION)"
+	git tag -a "v$(VERSION)" -m "v$(VERSION)"
+	@echo ""
+	@echo "Done. Push with:"
+	@echo "  git push origin master --tags"

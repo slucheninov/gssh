@@ -14,6 +14,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify GSSH_VERSION matches tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          CODE_VERSION=$(grep -oP 'GSSH_VERSION="\K[^"]+' gssh.zsh)
+          if [[ "$TAG" != "$CODE_VERSION" ]]; then
+            echo "::error::Tag v${TAG} does not match GSSH_VERSION=\"${CODE_VERSION}\" in gssh.zsh"
+            echo "Use 'make release VERSION=${TAG}' to update both"
+            exit 1
+          fi
+
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y bats shellcheck shfmt zsh
 
