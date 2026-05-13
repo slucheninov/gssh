@@ -8,7 +8,7 @@ Zsh helper for SSH into GCP VMs via IAP tunnel. It wraps `gcloud compute ssh`, a
 - **Interactive selectors** for account, project, and zone (fzf or built-in `select`)
 - **Account-aware VM cache** with project/zone metadata and configurable TTL (default 24h)
 - **Literal exclude prefixes** to filter out unwanted VMs (e.g. `gke-` nodes)
-- **Multiple GCP accounts** with interactive switching (`--account` / `-a`)
+- **Multiple GCP accounts** with automatic per-account caching and VM account auto-detection
 - **Extra SSH args** via `--` (port forwarding, tunnels, etc.)
 - **Dry-run and copy modes** for inspecting or copying the generated `gcloud` command
 - **Atomic self-upgrade**: downloads all files before replacing the installed copy
@@ -148,17 +148,62 @@ gssh --help        # or: gssh -h
 
 `--dry-run` and `--copy` shell-quote arguments with spaces so commands such as `-o "ProxyCommand=ssh host"` remain pasteable.
 
+## Multi-account
+
+When `GSSH_ACCOUNTS` lists several emails, `gssh` works across all of them automatically:
+
+- **`gssh --refresh`** refreshes each account's cache separately, silently skipping projects that are inaccessible from a given account.
+- **`gssh --list`** aggregates VMs from all account caches into a single list.
+- **`gssh <vm>`** looks up which account owns the VM in the cache and uses it for the SSH connection. If the VM exists under multiple accounts, an interactive selector is shown.
+- **`gssh --account <email> <vm>`** bypasses auto-detection and uses the specified account.
+
+Before any operation `gssh` validates that every configured account is authenticated. If an account is missing from `gcloud auth list`, you will see:
+
+```
+gssh: the following accounts are not authenticated:
+  - user@company.com
+
+Run the following to authenticate:
+  gcloud auth login user@company.com
+```
+
+### Example
+
+```bash
+# .env
+GSSH_ACCOUNTS="dev@company.com ops@company.com"
+GSSH_PROJECTS="dev-project-123 staging-456 prod-789"
+```
+
+```bash
+$ gssh --refresh
+  ⠙ gssh: refreshing cache for dev@company.com...
+  ⠙ gssh: refreshing cache for ops@company.com...
+gssh: cache refreshed (42 VMs across 2 accounts)
+
+$ gssh --list          # shows VMs from both accounts
+mysql-primary-01       # from ops@company.com / prod-789
+mysql-staging-01       # from dev@company.com / staging-456
+...
+
+$ gssh mysql-primary-01   # auto-detects ops@company.com
+gssh: connecting to mysql-primary-01 | account: ops@company.com | project: prod-789 | zone: us-central1-a
+```
+
 ## Cache
 
 The cache is refreshed automatically when it is missing, expired, or in the older name-only format. It stores VM name, project, and zone internally so `gssh` can narrow project/zone completion and skip selectors when a VM has a single cached match.
 
-When `GSSH_ACCOUNTS` or `--account` is used, each account gets its own cache file derived from `GSSH_CACHE_FILE`, for example:
+Each account gets its own cache file derived from `GSSH_CACHE_FILE`:
 
 ```text
-~/.cache/gssh/user_company_com_vms
+~/.cache/gssh/dev_company_com_vms
+~/.cache/gssh/ops_company_com_vms
 ```
 
-Refreshes are atomic: `gssh` writes a temporary cache first and keeps the existing cache if `gcloud compute instances list` fails.
+When multiple accounts are configured, a project that fails for one account (permission denied) is silently skipped — it will be picked up by the account that has access. The cache is updated as long as at least one project succeeds.
+
+Refreshes are atomic: `gssh` writes a temporary cache first and keeps the existing cache if all projects fail for a given account.
 
 ## Tab completion
 
