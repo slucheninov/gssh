@@ -201,7 +201,7 @@ Each account gets its own cache file derived from `GSSH_CACHE_FILE`:
 ~/.cache/gssh/ops_company_com_vms
 ```
 
-When multiple accounts are configured, a project that fails for one account (permission denied) is silently skipped — it will be picked up by the account that has access. The cache is updated as long as at least one project succeeds.
+When multiple accounts are configured, a project that fails for one account (permission denied) is silently skipped - it will be picked up by the account that has access. The cache is updated as long as at least one project succeeds.
 
 Refreshes are atomic: `gssh` writes a temporary cache first and keeps the existing cache if all projects fail for a given account.
 
