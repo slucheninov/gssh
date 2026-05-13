@@ -247,6 +247,18 @@ make test   # Bats tests
 make check  # lint + test
 ```
 
+## Release
+
+Releases are driven by git tags. The `make release` target updates `GSSH_VERSION` in `gssh.zsh`, commits, and creates an annotated tag:
+
+```bash
+make release VERSION=1.2.0
+```
+
+This updates `GSSH_VERSION` in `gssh.zsh`, commits, creates an annotated tag `v1.2.0`, and pushes to origin. The push triggers the GitHub Actions [release workflow](.github/workflows/release.yml), which runs lint + tests, verifies that `GSSH_VERSION` matches the tag, and creates a GitHub Release with a changelog.
+
+If you create a tag manually without updating `GSSH_VERSION`, CI will fail with an error asking you to use `make release`.
+
 ## Uninstall
 
 ```bash

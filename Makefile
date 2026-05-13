@@ -28,6 +28,6 @@ endif
 	git add gssh.zsh
 	git commit -m "release: v$(VERSION)"
 	git tag -a "v$(VERSION)" -m "v$(VERSION)"
+	git push origin master --tags
 	@echo ""
-	@echo "Done. Push with:"
-	@echo "  git push origin master --tags"
+	@echo "Released v$(VERSION)"
