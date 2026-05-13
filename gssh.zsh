@@ -146,6 +146,7 @@ function _gssh_spinner() {
 }
 
 function _gssh_refresh_cache() {
+  setopt local_options no_monitor
   local account="$1"
   local force="${2:-false}"
   local silent_errors="${3:-false}"
