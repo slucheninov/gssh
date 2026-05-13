@@ -560,10 +560,13 @@ function gssh() {
 
     rm -rf "$tmpdir"
 
+    local new_version
+    new_version=$(grep -m1 '^GSSH_VERSION=' "$install_dir/gssh.zsh" 2>/dev/null | cut -d'"' -f2)
+
     if [[ "$updated" == true ]]; then
-      echo "gssh: upgraded. Run 'exec zsh' to reload."
+      echo "gssh: upgraded to ${new_version:-unknown}. Run 'exec zsh' to reload."
     else
-      echo "gssh: already at the latest version."
+      echo "gssh: already at the latest version (${new_version:-$GSSH_VERSION})."
     fi
     return 0
   fi
