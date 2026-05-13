@@ -103,22 +103,26 @@ function _gssh_fetch_project_instances() {
   local account="$1"
   local project="$2"
   local tmpfile="$3"
-  local output
+  local output _stderr_file
   local -a account_flag=()
   local -a project_flag=()
 
   [[ -n "$account" ]] && account_flag=(--account="$account")
   [[ -n "$project" ]] && project_flag=(--project="$project")
 
-  if ! output=$(gcloud compute instances list "${account_flag[@]}" "${project_flag[@]}" --format='value(name,zone.basename())' 2>&1); then
+  _stderr_file="$(mktemp)"
+  if ! output=$(gcloud compute instances list "${account_flag[@]}" "${project_flag[@]}" --format='value(name,zone.basename())' 2>"$_stderr_file"); then
     if [[ -n "$project" ]]; then
-      echo "gssh: failed to list VMs for project $project: $output" >&2
+      echo "gssh: failed to list VMs for project $project" >&2
     else
-      echo "gssh: failed to list VMs: $output" >&2
+      echo "gssh: failed to list VMs" >&2
     fi
+    [[ -s "$_stderr_file" ]] && cat "$_stderr_file" >&2
+    rm -f "$_stderr_file"
     return 1
   fi
 
+  rm -f "$_stderr_file"
   _gssh_append_cache_rows "$tmpfile" "$project" "$output"
 }
 
@@ -144,6 +148,7 @@ function _gssh_spinner() {
 function _gssh_refresh_cache() {
   local account="$1"
   local force="${2:-false}"
+  local silent_errors="${3:-false}"
   local cache_file=$(_gssh_cache_file "$account")
   local -a projects=(${(s: :)GSSH_PROJECTS})
   local tmpfile errfile
@@ -157,28 +162,32 @@ function _gssh_refresh_cache() {
   errfile="$(mktemp)"
 
   (
-    local p _default_project _failed=false
+    local p _default_project _any_success=false
     if (( ${#projects} > 0 )); then
       for p in "${projects[@]}"; do
-        _gssh_fetch_project_instances "$account" "$p" "$tmpfile" || _failed=true
+        _gssh_fetch_project_instances "$account" "$p" "$tmpfile" && _any_success=true
       done
     else
       _default_project=$(gcloud config get-value project 2>/dev/null)
       [[ "$_default_project" == "(unset)" ]] && _default_project=""
-      _gssh_fetch_project_instances "$account" "$_default_project" "$tmpfile" || _failed=true
+      _gssh_fetch_project_instances "$account" "$_default_project" "$tmpfile" && _any_success=true
     fi
-    [[ "$_failed" == true ]] && exit 1
-    exit 0
+    [[ "$_any_success" == true ]] && exit 0
+    exit 1
   ) 2>"$errfile" &
   local bg_pid=$!
 
-  _gssh_spinner "$bg_pid" "gssh: refreshing VM cache..."
+  local _spinner_msg="gssh: refreshing VM cache..."
+  [[ -n "$account" ]] && _spinner_msg="gssh: refreshing cache for $account..."
+  _gssh_spinner "$bg_pid" "$_spinner_msg"
 
   wait "$bg_pid"
   local rc=$?
 
   if [[ $rc -ne 0 ]]; then
-    [[ -s "$errfile" ]] && cat "$errfile" >&2
+    if [[ "$silent_errors" != true ]]; then
+      [[ -s "$errfile" ]] && cat "$errfile" >&2
+    fi
     rm -f "$tmpfile" "$errfile"
     return 1
   fi
@@ -189,54 +198,156 @@ function _gssh_refresh_cache() {
 
 function _gssh_cached_vms() {
   local account="$1"
-  local cache_file=$(_gssh_cache_file "$account")
-  local name project zone
+  local -a _all_accounts=(${(s: :)GSSH_ACCOUNTS})
+  local name project zone cache_file
   local -A seen=()
 
-  _gssh_refresh_cache "$account" || return 1
-  while IFS=$'\t' read -r name project zone; do
-    [[ -z "$name" || -n "${seen[$name]}" ]] && continue
-    seen[$name]=1
-    print -r -- "$name"
-  done < "$cache_file"
+  if [[ -z "$account" ]] && (( ${#_all_accounts} > 1 )); then
+    local _acct
+    for _acct in "${_all_accounts[@]}"; do
+      _gssh_refresh_cache "$_acct" false true
+      cache_file=$(_gssh_cache_file "$_acct")
+      [[ ! -f "$cache_file" ]] && continue
+      while IFS=$'\t' read -r name project zone; do
+        [[ -z "$name" || -n "${seen[$name]}" ]] && continue
+        seen[$name]=1
+        print -r -- "$name"
+      done < "$cache_file"
+    done
+  else
+    cache_file=$(_gssh_cache_file "$account")
+    _gssh_refresh_cache "$account" || return 1
+    while IFS=$'\t' read -r name project zone; do
+      [[ -z "$name" || -n "${seen[$name]}" ]] && continue
+      seen[$name]=1
+      print -r -- "$name"
+    done < "$cache_file"
+  fi
 }
 
 function _gssh_cached_projects() {
   local account="$1"
   local vm="${2:-}"
-  local cache_file=$(_gssh_cache_file "$account")
-  local name project zone
+  local -a _all_accounts=(${(s: :)GSSH_ACCOUNTS})
+  local name project zone cache_file
   local -A seen=()
 
-  _gssh_refresh_cache "$account" || return 1
-  while IFS=$'\t' read -r name project zone; do
-    [[ -z "$project" ]] && continue
-    [[ -n "$vm" && "$name" != "$vm" ]] && continue
-    if [[ -z "${seen[$project]}" ]]; then
-      seen[$project]=1
-      print -r -- "$project"
-    fi
-  done < "$cache_file"
+  if [[ -z "$account" ]] && (( ${#_all_accounts} > 1 )); then
+    local _acct
+    for _acct in "${_all_accounts[@]}"; do
+      _gssh_refresh_cache "$_acct" false true
+      cache_file=$(_gssh_cache_file "$_acct")
+      [[ ! -f "$cache_file" ]] && continue
+      while IFS=$'\t' read -r name project zone; do
+        [[ -z "$project" ]] && continue
+        [[ -n "$vm" && "$name" != "$vm" ]] && continue
+        if [[ -z "${seen[$project]}" ]]; then
+          seen[$project]=1
+          print -r -- "$project"
+        fi
+      done < "$cache_file"
+    done
+  else
+    cache_file=$(_gssh_cache_file "$account")
+    _gssh_refresh_cache "$account" || return 1
+    while IFS=$'\t' read -r name project zone; do
+      [[ -z "$project" ]] && continue
+      [[ -n "$vm" && "$name" != "$vm" ]] && continue
+      if [[ -z "${seen[$project]}" ]]; then
+        seen[$project]=1
+        print -r -- "$project"
+      fi
+    done < "$cache_file"
+  fi
 }
 
 function _gssh_cached_zones() {
   local account="$1"
   local vm="${2:-}"
   local project_filter="${3:-}"
-  local cache_file=$(_gssh_cache_file "$account")
-  local name project zone
+  local -a _all_accounts=(${(s: :)GSSH_ACCOUNTS})
+  local name project zone cache_file
   local -A seen=()
 
-  _gssh_refresh_cache "$account" || return 1
-  while IFS=$'\t' read -r name project zone; do
-    [[ -z "$zone" ]] && continue
-    [[ -n "$vm" && "$name" != "$vm" ]] && continue
-    [[ -n "$project_filter" && "$project" != "$project_filter" ]] && continue
-    if [[ -z "${seen[$zone]}" ]]; then
-      seen[$zone]=1
-      print -r -- "$zone"
+  if [[ -z "$account" ]] && (( ${#_all_accounts} > 1 )); then
+    local _acct
+    for _acct in "${_all_accounts[@]}"; do
+      _gssh_refresh_cache "$_acct" false true
+      cache_file=$(_gssh_cache_file "$_acct")
+      [[ ! -f "$cache_file" ]] && continue
+      while IFS=$'\t' read -r name project zone; do
+        [[ -z "$zone" ]] && continue
+        [[ -n "$vm" && "$name" != "$vm" ]] && continue
+        [[ -n "$project_filter" && "$project" != "$project_filter" ]] && continue
+        if [[ -z "${seen[$zone]}" ]]; then
+          seen[$zone]=1
+          print -r -- "$zone"
+        fi
+      done < "$cache_file"
+    done
+  else
+    cache_file=$(_gssh_cache_file "$account")
+    _gssh_refresh_cache "$account" || return 1
+    while IFS=$'\t' read -r name project zone; do
+      [[ -z "$zone" ]] && continue
+      [[ -n "$vm" && "$name" != "$vm" ]] && continue
+      [[ -n "$project_filter" && "$project" != "$project_filter" ]] && continue
+      if [[ -z "${seen[$zone]}" ]]; then
+        seen[$zone]=1
+        print -r -- "$zone"
+      fi
+    done < "$cache_file"
+  fi
+}
+
+function _gssh_find_vm_account() {
+  local vm="$1"
+  local -a _all_accounts=(${(s: :)GSSH_ACCOUNTS})
+  local _acct cache_file name project zone
+  local -A _found=()
+
+  for _acct in "${_all_accounts[@]}"; do
+    cache_file=$(_gssh_cache_file "$_acct")
+    [[ ! -f "$cache_file" ]] && continue
+    while IFS=$'\t' read -r name project zone; do
+      if [[ "$name" == "$vm" && -z "${_found[$_acct]}" ]]; then
+        _found[$_acct]=1
+        print -r -- "$_acct"
+        break
+      fi
+    done < "$cache_file"
+  done
+  (( ${#_found} > 0 ))
+}
+
+function _gssh_validate_accounts() {
+  local -a check_accounts=("$@")
+  (( ${#check_accounts} == 0 )) && return 0
+
+  local -a authed_accounts
+  authed_accounts=(${(f)"$(gcloud auth list --format='value(account)' 2>/dev/null)"})
+
+  local acct
+  local -a missing=()
+  for acct in "${check_accounts[@]}"; do
+    if (( ! ${authed_accounts[(Ie)$acct]} )); then
+      missing+=("$acct")
     fi
-  done < "$cache_file"
+  done
+
+  if (( ${#missing} > 0 )); then
+    echo "gssh: the following accounts are not authenticated:" >&2
+    for acct in "${missing[@]}"; do
+      echo "  - $acct" >&2
+    done
+    echo "" >&2
+    echo "Run the following to authenticate:" >&2
+    for acct in "${missing[@]}"; do
+      echo "  gcloud auth login $acct" >&2
+    done
+    return 1
+  fi
+  return 0
 }
 
 function _gssh_get_vms() {
@@ -456,13 +567,17 @@ function gssh() {
     return 0
   fi
 
-  # Resolve account if not explicitly provided
+  # Resolve account: single account auto-selects; multi-account deferred to commands
   local -a accounts=(${(s: :)GSSH_ACCOUNTS})
-  if [[ -z "$account" ]] && (( ${#accounts} > 1 )); then
-    account=$(_gssh_select "Select account:" "${accounts[@]}")
-    [[ -z "$account" ]] && return 1
-  elif [[ -z "$account" ]] && (( ${#accounts} == 1 )); then
+  if [[ -z "$account" ]] && (( ${#accounts} == 1 )); then
     account="${accounts[1]}"
+  fi
+
+  # Validate that accounts are authenticated in gcloud
+  if [[ -n "$account" ]]; then
+    _gssh_validate_accounts "$account" || return 1
+  elif (( ${#accounts} > 0 )); then
+    _gssh_validate_accounts "${accounts[@]}" || return 1
   fi
 
   # --- list ---
@@ -473,9 +588,19 @@ function gssh() {
 
   # --- refresh ---
   if [[ "$cmd" == "refresh" ]]; then
-    local cache_file=$(_gssh_cache_file "$account")
-    _gssh_refresh_cache "$account" true || return 1
-    echo "gssh: cache refreshed ($(wc -l < "$cache_file" | tr -d ' ') VMs)"
+    if [[ -z "$account" ]] && (( ${#accounts} > 1 )); then
+      local _total=0 _acct _cf
+      for _acct in "${accounts[@]}"; do
+        _gssh_refresh_cache "$_acct" true true
+        _cf=$(_gssh_cache_file "$_acct")
+        [[ -f "$_cf" ]] && (( _total += $(wc -l < "$_cf" | tr -d ' ') ))
+      done
+      echo "gssh: cache refreshed ($_total VMs across ${#accounts} accounts)"
+    else
+      local cache_file=$(_gssh_cache_file "$account")
+      _gssh_refresh_cache "$account" true || return 1
+      echo "gssh: cache refreshed ($(wc -l < "$cache_file" | tr -d ' ') VMs)"
+    fi
     return 0
   fi
 
@@ -484,6 +609,24 @@ function gssh() {
     echo "Usage: gssh [--account <email>] <vm-name> [project] [zone]" >&2
     echo "       gssh --help for more info" >&2
     return 1
+  fi
+
+  # Resolve account for SSH when multiple accounts are configured
+  if [[ -z "$account" ]] && (( ${#accounts} > 1 )); then
+    local _acct
+    for _acct in "${accounts[@]}"; do
+      _gssh_refresh_cache "$_acct" false true
+    done
+    local -a _vm_accounts=(${(f)"$(_gssh_find_vm_account "${positional[1]}")"})
+    if (( ${#_vm_accounts} == 1 )); then
+      account="${_vm_accounts[1]}"
+    elif (( ${#_vm_accounts} > 1 )); then
+      account=$(_gssh_select "Select account for ${positional[1]}:" "${_vm_accounts[@]}")
+      [[ -z "$account" ]] && return 1
+    else
+      account=$(_gssh_select "Select account:" "${accounts[@]}")
+      [[ -z "$account" ]] && return 1
+    fi
   fi
 
   local vm="${positional[1]}"

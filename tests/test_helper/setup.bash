@@ -16,11 +16,40 @@ setup() {
   mkdir -p "${TEST_TEMP_DIR}/bin"
   cat > "${TEST_TEMP_DIR}/bin/gcloud" << 'STUB'
 #!/usr/bin/env bash
+if [[ "$*" == *"auth list"* ]]; then
+  if [[ -n "${GSSH_MOCK_AUTHED_ACCOUNTS:-}" ]]; then
+    echo "$GSSH_MOCK_AUTHED_ACCOUNTS"
+  else
+    echo "user@test.com"
+  fi
+  exit 0
+fi
 if [[ "$*" == *"instances list"* ]]; then
   if [[ "${GSSH_MOCK_FAIL_LIST:-0}" == "1" ]]; then
     echo "mock list failure" >&2
     exit 1
   fi
+
+  # Multi-account mock: per-account/project data from files
+  if [[ -n "${GSSH_MOCK_DATA_DIR:-}" ]]; then
+    _mock_account=""
+    _mock_project=""
+    for _arg in "$@"; do
+      case "$_arg" in
+        --account=*) _mock_account="${_arg#--account=}" ;;
+        --project=*) _mock_project="${_arg#--project=}" ;;
+      esac
+    done
+    _mock_key="${_mock_account}__${_mock_project}"
+    if [[ -f "${GSSH_MOCK_DATA_DIR}/${_mock_key}" ]]; then
+      cat "${GSSH_MOCK_DATA_DIR}/${_mock_key}"
+      exit 0
+    else
+      echo "ERROR: permission denied for project ${_mock_project}" >&2
+      exit 1
+    fi
+  fi
+
   echo "vm-web-01 us-central1-a"
   echo "vm-api-01 us-central1-a"
   echo "vm-db-01 us-central1-b"

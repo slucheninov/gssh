@@ -68,3 +68,97 @@ load test_helper/setup
   [ "$status" -eq 0 ]
   [ -f "${TEST_TEMP_DIR}/cache/user_test_com_vms" ]
 }
+
+@test "multi-account refresh creates per-account cache files" {
+  export GSSH_ACCOUNTS="user1@test.com user2@test.com"
+  export GSSH_PROJECTS="project-a project-b"
+  export GSSH_MOCK_DATA_DIR="${TEST_TEMP_DIR}/mock_data"
+  export GSSH_MOCK_AUTHED_ACCOUNTS=$'user1@test.com\nuser2@test.com'
+  mkdir -p "$GSSH_MOCK_DATA_DIR"
+
+  printf 'vm-web-01 us-central1-a\nvm-api-01 us-central1-a\n' > "${GSSH_MOCK_DATA_DIR}/user1@test.com__project-a"
+  printf 'vm-db-01 us-central1-b\n' > "${GSSH_MOCK_DATA_DIR}/user2@test.com__project-b"
+
+  run_gssh --refresh
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TEMP_DIR}/cache/user1_test_com_vms" ]
+  [ -f "${TEST_TEMP_DIR}/cache/user2_test_com_vms" ]
+  [[ "${output}" == *"3 VMs across 2 accounts"* ]]
+}
+
+@test "multi-account --list shows VMs from all accounts" {
+  export GSSH_ACCOUNTS="user1@test.com user2@test.com"
+  export GSSH_PROJECTS="project-a project-b"
+  export GSSH_MOCK_DATA_DIR="${TEST_TEMP_DIR}/mock_data"
+  export GSSH_MOCK_AUTHED_ACCOUNTS=$'user1@test.com\nuser2@test.com'
+  mkdir -p "$GSSH_MOCK_DATA_DIR"
+
+  printf 'vm-web-01 us-central1-a\n' > "${GSSH_MOCK_DATA_DIR}/user1@test.com__project-a"
+  printf 'vm-db-01 us-central1-b\n' > "${GSSH_MOCK_DATA_DIR}/user2@test.com__project-b"
+
+  run_gssh --list
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"vm-web-01"* ]]
+  [[ "${output}" == *"vm-db-01"* ]]
+}
+
+@test "multi-account cache does not include warnings" {
+  export GSSH_ACCOUNTS="user1@test.com user2@test.com"
+  export GSSH_PROJECTS="project-a project-b"
+  export GSSH_MOCK_DATA_DIR="${TEST_TEMP_DIR}/mock_data"
+  export GSSH_MOCK_AUTHED_ACCOUNTS=$'user1@test.com\nuser2@test.com'
+  mkdir -p "$GSSH_MOCK_DATA_DIR"
+
+  printf 'vm-web-01 us-central1-a\n' > "${GSSH_MOCK_DATA_DIR}/user1@test.com__project-a"
+  printf 'vm-db-01 us-central1-b\n' > "${GSSH_MOCK_DATA_DIR}/user2@test.com__project-b"
+
+  run_gssh --list
+  [ "$status" -eq 0 ]
+  [[ "${output}" != *"WARNING"* ]]
+  [[ "${output}" != *"ERROR"* ]]
+  [[ "${output}" != *"permission denied"* ]]
+}
+
+@test "multi-account SSH auto-detects account from cache" {
+  export GSSH_ACCOUNTS="user1@test.com user2@test.com"
+  export GSSH_PROJECTS="project-a project-b"
+  export GSSH_MOCK_DATA_DIR="${TEST_TEMP_DIR}/mock_data"
+  export GSSH_MOCK_AUTHED_ACCOUNTS=$'user1@test.com\nuser2@test.com'
+  mkdir -p "$GSSH_MOCK_DATA_DIR"
+
+  printf 'vm-web-01 us-central1-a\n' > "${GSSH_MOCK_DATA_DIR}/user1@test.com__project-a"
+  printf 'vm-db-01 us-central1-b\n' > "${GSSH_MOCK_DATA_DIR}/user2@test.com__project-b"
+
+  run_gssh --dry-run vm-db-01
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"--account=user2@test.com"* ]]
+  [[ "${output}" == *"--project=project-b"* ]]
+}
+
+@test "error when account is not authenticated" {
+  export GSSH_ACCOUNTS="user@test.com unauthed@test.com"
+  export GSSH_MOCK_AUTHED_ACCOUNTS="user@test.com"
+
+  run_gssh --list
+  [ "$status" -eq 1 ]
+  [[ "${output}" == *"not authenticated"* ]]
+  [[ "${output}" == *"unauthed@test.com"* ]]
+  [[ "${output}" == *"gcloud auth login"* ]]
+}
+
+@test "error when explicit --account is not authenticated" {
+  export GSSH_MOCK_AUTHED_ACCOUNTS="other@test.com"
+
+  run_gssh --account bad@test.com --list
+  [ "$status" -eq 1 ]
+  [[ "${output}" == *"not authenticated"* ]]
+  [[ "${output}" == *"bad@test.com"* ]]
+}
+
+@test "no error when all accounts are authenticated" {
+  export GSSH_ACCOUNTS="user@test.com"
+  export GSSH_MOCK_AUTHED_ACCOUNTS="user@test.com"
+
+  run_gssh --list
+  [ "$status" -eq 0 ]
+}
