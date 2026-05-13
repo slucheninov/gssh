@@ -2,7 +2,7 @@
 # gssh - GCP IAP SSH helper with fzf support
 # https://github.com/USER/gssh
 
-GSSH_VERSION="1.1.5"
+GSSH_VERSION="1.1.6"
 
 # --- Configuration defaults (override in .zshrc or .env) ---
 : ${GSSH_ZONES:="us-central1-a us-central1-b us-central1-c"}
