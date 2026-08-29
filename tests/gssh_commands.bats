@@ -16,6 +16,18 @@ load test_helper/setup
   [[ "${output}" == *"3306:localhost:3306"* ]]
 }
 
+@test "-c runs a remote command" {
+  run_gssh test-vm -c "uptime -a"
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"--command=uptime -a"* ]]
+}
+
+@test "--command preserves shell metacharacters as one gcloud argument" {
+  run_gssh test-vm test-project-1 us-central1-a --command "echo 'hello world' && uptime -a"
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"--command=echo 'hello world' && uptime -a"* ]]
+}
+
 @test "--account flag passes account to gcloud" {
   run_gssh -a user@test.com test-vm test-project-1 us-central1-a
   [ "$status" -eq 0 ]

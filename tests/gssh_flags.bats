@@ -90,3 +90,15 @@ load test_helper/setup
   [[ "${output}" == *"-o"* ]]
   [[ "${output}" == *"ProxyCommand=ssh\\ host"* ]]
 }
+
+@test "--command without a value returns error" {
+  run_gssh test-vm --command
+  [ "$status" -eq 1 ]
+  [[ "${output}" == *"--command requires a command"* ]]
+}
+
+@test "--dry-run includes remote command" {
+  run_gssh --dry-run my-vm test-project-1 us-central1-a -c "uptime -a"
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"--command=uptime\\ -a"* ]]
+}

@@ -38,7 +38,7 @@ _gssh_completion_positionals() {
       --)
         break
         ;;
-      --account|-a)
+      --account|-a|--command|-c)
         skip_next=true
         ;;
       -*)
@@ -57,7 +57,8 @@ _arguments -C \
   '(-r --refresh)'{-r,--refresh}'[Force refresh cache]' \
   '(-u --upgrade)'{-u,--upgrade}'[Upgrade gssh]' \
   '(-d --dry-run)'{-d,--dry-run}'[Show command without executing]' \
-  '(-c --copy)'{-c,--copy}'[Copy command to clipboard]' \
+  '(-c --command)'{-c,--command}'[Run a command on the remote VM]:command:' \
+  '--copy[Copy SSH command to clipboard]' \
   '(-a --account)'{-a,--account}'[GCP account]:account:->accounts' \
   '1:vm name:->vms' \
   '2:project:->projects' \

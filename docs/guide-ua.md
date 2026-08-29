@@ -9,7 +9,7 @@
 - автоматичне визначення проєкту/зони з кешу, якщо для VM є один збіг;
 - фільтрація VM за literal-префіксами, наприклад `gke-`;
 - передача додаткових SSH аргументів після `--`;
-- `--dry-run` для перегляду команди і `--copy` для копіювання в буфер;
+- виконання команд на VM, `--dry-run` для перегляду команди і `--copy` для копіювання в буфер;
 - атомарне оновлення: усі файли спочатку завантажуються, і лише потім замінюють встановлену версію.
 
 ## Вимоги
@@ -78,6 +78,10 @@ gssh --account user@company.com my-vm-name my-project us-central1-a
 gssh my-vm-name -- -L 3306:localhost:3306
 gssh my-vm-name my-project us-central1-a -- -L 8080:localhost:80 -N
 
+# Виконати команду на VM
+gssh my-vm-name -c "uptime -a"
+gssh my-vm-name my-project us-central1-a --command "systemctl status nginx"
+
 # Оновити кеш VM вручну
 gssh --refresh     # або: gssh -r
 
@@ -90,7 +94,6 @@ gssh -d my-vm-name my-project us-central1-a
 
 # Скопіювати команду в буфер обміну
 gssh --copy my-vm-name my-project us-central1-a
-gssh -c my-vm-name my-project us-central1-a
 
 # Оновити встановлені файли gssh
 gssh --upgrade     # або: gssh -u
@@ -102,7 +105,7 @@ gssh --version     # або: gssh -V
 gssh --help        # або: gssh -h
 ```
 
-`--dry-run` і `--copy` екранують аргументи з пробілами, тому команди на кшталт `-o "ProxyCommand=ssh host"` можна безпечно вставляти в shell.
+`--command` передається до `gcloud compute ssh` одним аргументом, тому виконується на VM, а не в локальній оболонці. `--dry-run` і `--copy` екранують аргументи з пробілами, тому команди на кшталт `-o "ProxyCommand=ssh host"` можна безпечно вставляти в shell.
 
 ## Мульти-акаунт
 

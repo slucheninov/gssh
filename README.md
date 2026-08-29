@@ -10,7 +10,7 @@ Zsh helper for SSH into GCP VMs via IAP tunnel. It wraps `gcloud compute ssh`, a
 - **Literal exclude prefixes** to filter out unwanted VMs (e.g. `gke-` nodes)
 - **Multiple GCP accounts** with automatic per-account caching and VM account auto-detection
 - **Extra SSH args** via `--` (port forwarding, tunnels, etc.)
-- **Dry-run and copy modes** for inspecting or copying the generated `gcloud` command
+- **Remote command execution**, dry-run, and copy modes
 - **Atomic self-upgrade**: downloads all files before replacing the installed copy
 - Works on **macOS** and **Linux**
 
@@ -122,6 +122,10 @@ gssh --account user@company.com <vm-name> <project-id> <zone>
 gssh <vm-name> -- -L 3306:localhost:3306
 gssh <vm-name> <project-id> <zone> -- -L 8080:localhost:80 -N
 
+# Run a command on the remote VM
+gssh <vm-name> -c "uptime -a"
+gssh <vm-name> <project-id> <zone> --command "systemctl status nginx"
+
 # List cached VM names
 gssh --list        # or: gssh -l
 
@@ -134,7 +138,6 @@ gssh -d <vm-name> <project-id> <zone>
 
 # Copy command to clipboard
 gssh --copy <vm-name> <project-id> <zone>
-gssh -c <vm-name> <project-id> <zone>
 
 # Upgrade installed gssh files
 gssh --upgrade     # or: gssh -u
@@ -146,7 +149,7 @@ gssh --version     # or: gssh -V
 gssh --help        # or: gssh -h
 ```
 
-`--dry-run` and `--copy` shell-quote arguments with spaces so commands such as `-o "ProxyCommand=ssh host"` remain pasteable.
+`--command` is passed to `gcloud compute ssh` as one argument, so it runs on the VM rather than in the local shell. `--dry-run` and `--copy` shell-quote arguments with spaces so commands such as `-o "ProxyCommand=ssh host"` remain pasteable.
 
 ## Multi-account
 

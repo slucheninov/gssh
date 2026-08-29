@@ -384,13 +384,12 @@ function gssh() {
   # Parse all flags first
   local account=""
   local cmd=""
+  local remote_command=""
   local -a positional=()
   local -a extra_args=()
-  local parsing_flags=true
 
   while (( $# > 0 )); do
-    if [[ "$parsing_flags" == true ]]; then
-      case "$1" in
+    case "$1" in
         --help|-h)
           cmd="help"
           ;;
@@ -409,8 +408,16 @@ function gssh() {
         --dry-run|-d)
           cmd="dry-run"
           ;;
-        --copy|-c)
+        --copy)
           cmd="copy"
+          ;;
+        --command|-c)
+          if (( $# < 2 )); then
+            echo "gssh: --command requires a command" >&2
+            return 1
+          fi
+          shift
+          remote_command="$1"
           ;;
         --account|-a)
           if (( $# < 2 )) || [[ "$2" == -* ]]; then
@@ -432,23 +439,14 @@ function gssh() {
           ;;
         *)
           positional+=("$1")
-          parsing_flags=false
           ;;
-      esac
-    else
-      if [[ "$1" == "--" ]]; then
-        shift
-        extra_args=("$@")
-        break
-      fi
-      positional+=("$1")
-    fi
+    esac
     shift
   done
 
   # --- help ---
   if [[ "$cmd" == "help" ]]; then
-    echo "Usage: gssh [--account <email>] <vm-name> [project] [zone]"
+    echo "Usage: gssh [--account <email>] <vm-name> [project] [zone] [--command <command>]"
     echo ""
     echo "SSH into a GCP VM via IAP tunnel."
     echo "If project/zone are omitted, an interactive selector is shown."
@@ -459,12 +457,16 @@ function gssh() {
     echo "  gssh --upgrade, -u   Update gssh to the latest version"
     echo "  gssh --version, -V   Show version"
     echo "  gssh --dry-run, -d   Show gcloud command without executing"
-    echo "  gssh --copy,    -c   Copy SSH command to clipboard"
+    echo "  gssh --command, -c   Run a command on the remote VM"
+    echo "  gssh --copy         Copy SSH command to clipboard"
     echo "  gssh --account, -a   Select GCP account (or set GSSH_ACCOUNTS)"
     echo "  gssh --help,    -h   Show this help"
     echo ""
     echo "Extra SSH args can be passed after --:"
     echo "  gssh <vm-name> [project] [zone] -- -L 3306:localhost:3306"
+    echo ""
+    echo "Run a remote command:"
+    echo "  gssh <vm-name> -c \"uptime -a\""
     echo ""
     echo "Environment variables:"
     echo "  GSSH_PROJECTS         Space-separated list of GCP project IDs"
@@ -610,7 +612,7 @@ function gssh() {
 
   # --- ssh ---
   if (( ${#positional} == 0 )); then
-    echo "Usage: gssh [--account <email>] <vm-name> [project] [zone]" >&2
+    echo "Usage: gssh [--account <email>] <vm-name> [project] [zone] [--command <command>]" >&2
     echo "       gssh --help for more info" >&2
     return 1
   fi
@@ -680,6 +682,9 @@ function gssh() {
   fi
 
   local -a ssh_cmd=(gcloud compute ssh "$vm" "${account_flag[@]}" --tunnel-through-iap --project="$project" --zone="$zone")
+  if [[ -n "$remote_command" ]]; then
+    ssh_cmd+=("--command=$remote_command")
+  fi
   if (( ${#extra_args} > 0 )); then
     ssh_cmd+=(-- "${extra_args[@]}")
   fi
