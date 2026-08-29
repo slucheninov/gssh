@@ -18,6 +18,8 @@
 - [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (команда `gcloud` у PATH)
 - [fzf](https://github.com/junegunn/fzf) (опціонально - без нього працює вбудований `select`)
 
+Під час встановлення `gssh` намагається встановити NumPy для Python, який використовує `gcloud`. Це збільшує швидкість завантаження через IAP-тунель. `gssh` передає `CLOUDSDK_PYTHON_SITEPACKAGES=1` лише своєму виклику `gcloud`, тому глобальна конфігурація shell не змінюється. Якщо NumPy встановити не вдалося, інсталятор покаже попередження, але встановлення `gssh` завершиться.
+
 ## Встановлення
 
 Одна команда:

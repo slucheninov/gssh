@@ -11,6 +11,7 @@ Zsh helper for SSH into GCP VMs via IAP tunnel. It wraps `gcloud compute ssh`, a
 - **Multiple GCP accounts** with automatic per-account caching and VM account auto-detection
 - **Extra SSH args** via `--` (port forwarding, tunnels, etc.)
 - **Remote command execution**, dry-run, and copy modes
+- **IAP tunnel acceleration setup**: installer configures NumPy for the `gcloud` Python runtime
 - **Atomic self-upgrade**: downloads all files before replacing the installed copy
 - Works on **macOS** and **Linux**
 
@@ -34,6 +35,8 @@ gcloud compute ssh mysql-primary-01 --tunnel-through-iap --project=production-12
 - [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (`gcloud` CLI)
 - Zsh
 - [fzf](https://github.com/junegunn/fzf) (optional, falls back to built-in `select`)
+
+During installation, `gssh` attempts to install NumPy for the Python runtime used by `gcloud`. This improves IAP tunnel upload bandwidth. `gssh` also enables `CLOUDSDK_PYTHON_SITEPACKAGES=1` only for its own `gcloud` invocation, so the installed package is available without changing your global shell configuration. If NumPy cannot be installed, the installer reports it but still completes.
 
 ## Installation
 

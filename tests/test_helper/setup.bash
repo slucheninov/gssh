@@ -57,7 +57,7 @@ if [[ "$*" == *"instances list"* ]]; then
   exit 0
 fi
 if [[ "$*" == *"compute ssh"* ]]; then
-  echo "MOCK_SSH: $*"
+  echo "MOCK_SSH: $* | site packages: ${CLOUDSDK_PYTHON_SITEPACKAGES:-}"
   exit 0
 fi
 if [[ "$*" == *"config get-value project"* ]]; then

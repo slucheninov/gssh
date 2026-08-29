@@ -719,5 +719,5 @@ function gssh() {
   else
     echo "gssh: connecting to $vm | project: $project | zone: $zone"
   fi
-  "${ssh_cmd[@]}"
+  CLOUDSDK_PYTHON_SITEPACKAGES=1 "${ssh_cmd[@]}"
 }

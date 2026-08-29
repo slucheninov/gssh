@@ -37,6 +37,34 @@ _get_file() {
   fi
 }
 
+# --- IAP tunnel acceleration ---
+_install_iap_numpy() {
+  local gcloud_python
+
+  if ! command -v gcloud &>/dev/null; then
+    echo "IAP acceleration: gcloud not found; skipping NumPy installation."
+    return 0
+  fi
+
+  gcloud_python="$(gcloud info --format='value(basic.python_location)' 2>/dev/null)"
+  if [[ -z "$gcloud_python" || ! -x "$gcloud_python" ]]; then
+    echo "IAP acceleration: could not determine gcloud's Python; skipping NumPy installation."
+    return 0
+  fi
+
+  if "$gcloud_python" -c 'import numpy' &>/dev/null; then
+    echo "IAP acceleration: NumPy is already installed for gcloud."
+    return 0
+  fi
+
+  echo "IAP acceleration: installing NumPy for gcloud..."
+  if "$gcloud_python" -m pip install numpy; then
+    echo "IAP acceleration: NumPy installed."
+  else
+    echo "IAP acceleration: NumPy could not be installed; gssh will still work, but IAP may be slower." >&2
+  fi
+}
+
 # --- Header ---
 if [[ -f "$INSTALL_DIR/gssh.zsh" ]]; then
   echo "gssh updater"
@@ -78,6 +106,8 @@ for f in gssh.zsh _gssh; do
     echo "Installed: $f"
   fi
 done
+
+_install_iap_numpy
 
 # --- .env ---
 if [[ -f "$INSTALL_DIR/.env" ]]; then

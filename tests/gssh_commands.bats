@@ -9,6 +9,12 @@ load test_helper/setup
   [[ "${output}" == *"test-vm"* ]]
 }
 
+@test "ssh enables gcloud Python site packages for IAP acceleration" {
+  run_gssh test-vm test-project-1 us-central1-a
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"site packages: 1"* ]]
+}
+
 @test "extra args passed after --" {
   run_gssh test-vm test-project-1 us-central1-a -- -L 3306:localhost:3306
   [ "$status" -eq 0 ]
