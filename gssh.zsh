@@ -402,7 +402,7 @@ function gssh() {
         --upgrade|-u)
           cmd="upgrade"
           ;;
-        --version|-V)
+        --version|-v|-V)
           cmd="version"
           ;;
         --dry-run|-d)
@@ -455,7 +455,7 @@ function gssh() {
     echo "  gssh --list,    -l   List cached VM names"
     echo "  gssh --refresh, -r   Force-refresh the VM name cache"
     echo "  gssh --upgrade, -u   Update gssh to the latest version"
-    echo "  gssh --version, -V   Show version"
+    echo "  gssh --version, -v   Show version"
     echo "  gssh --dry-run, -d   Show gcloud command without executing"
     echo "  gssh --command, -c   Run a command on the remote VM"
     echo "  gssh --copy         Copy SSH command to clipboard"
