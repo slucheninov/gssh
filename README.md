@@ -148,7 +148,7 @@ gssh --copy <vm-name> <project-id> <zone>
 gssh --upgrade     # or: gssh -u
 
 # Version
-gssh --version     # or: gssh -V
+gssh --version     # or: gssh -v
 
 # Help
 gssh --help        # or: gssh -h

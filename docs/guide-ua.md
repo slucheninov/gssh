@@ -103,7 +103,7 @@ gssh --copy my-vm-name my-project us-central1-a
 gssh --upgrade     # або: gssh -u
 
 # Версія
-gssh --version     # або: gssh -V
+gssh --version     # або: gssh -v
 
 # Довідка
 gssh --help        # або: gssh -h

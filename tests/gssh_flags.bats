@@ -17,13 +17,22 @@ load test_helper/setup
 @test "--version prints version" {
   run_gssh --version
   [ "$status" -eq 0 ]
-  [[ "${output}" == *"gssh"* ]]
+  version=$(sed -n 's/^GSSH_VERSION="\(.*\)"$/\1/p' "${GSSH_ROOT}/gssh.zsh")
+  [ "${output}" = "gssh ${version}" ]
 }
 
-@test "-V prints version" {
+@test "-v prints version" {
+  run_gssh -v
+  [ "$status" -eq 0 ]
+  version=$(sed -n 's/^GSSH_VERSION="\(.*\)"$/\1/p' "${GSSH_ROOT}/gssh.zsh")
+  [ "${output}" = "gssh ${version}" ]
+}
+
+@test "-V remains a version alias" {
   run_gssh -V
   [ "$status" -eq 0 ]
-  [[ "${output}" == *"gssh"* ]]
+  version=$(sed -n 's/^GSSH_VERSION="\(.*\)"$/\1/p' "${GSSH_ROOT}/gssh.zsh")
+  [ "${output}" = "gssh ${version}" ]
 }
 
 @test "unknown flag returns error" {
