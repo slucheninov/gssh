@@ -11,6 +11,7 @@ GSSH_VERSION="1.1.8"
 : ${GSSH_CACHE_TTL:=86400}
 : ${GSSH_EXCLUDE_PREFIXES:=""}
 : ${GSSH_ACCOUNTS:=""}
+: ${GSSH_ENV_FILE:="${HOME}/.gssh/.env"}
 
 # --- Cache ---
 function _gssh_cache_file() {
@@ -381,6 +382,12 @@ function _gssh_select() {
 
 # --- Main function ---
 function gssh() {
+  # Reload the user configuration so edits to ~/.gssh/.env take effect in the
+  # current terminal without requiring `source ~/.gssh/.env` or `exec zsh`.
+  if [[ -r "$GSSH_ENV_FILE" ]]; then
+    source "$GSSH_ENV_FILE" || return $?
+  fi
+
   # Parse all flags first
   local account=""
   local cmd=""

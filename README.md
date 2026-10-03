@@ -108,6 +108,8 @@ cp .env.example .env
 | `GSSH_EXCLUDE_PREFIXES` | _(empty)_ | Space-separated literal prefixes to exclude from cache (e.g. `gke-`) |
 | `GSSH_ACCOUNTS` | _(empty)_ | Space-separated GCP account emails for account switching |
 
+`gssh` reloads `~/.gssh/.env` for every invocation, so project changes take effect immediately in the current terminal; no shell restart is needed.
+
 ## Usage
 
 ```bash

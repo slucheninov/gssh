@@ -8,6 +8,7 @@ setup() {
   export GSSH_ACCOUNTS=""
   export GSSH_EXCLUDE_PREFIXES=""
   export GSSH_CACHE_TTL=86400
+  export GSSH_ENV_FILE="${TEST_TEMP_DIR}/gssh.env"
   export GSSH_MOCK_FAIL_LIST=0
   unset GSSH_HOME
   unset GSSH_MOCK_FAIL_DOWNLOAD

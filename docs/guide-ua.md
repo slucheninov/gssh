@@ -63,6 +63,8 @@ GSSH_ACCOUNTS="user1@gmail.com user2@company.com"
 | `GSSH_EXCLUDE_PREFIXES` | порожньо | Literal-префікси VM, які треба виключити |
 | `GSSH_ACCOUNTS` | порожньо | GCP акаунти для перемикання |
 
+`gssh` перечитує `~/.gssh/.env` під час кожного запуску, тому зміни проєктів діють одразу в поточній вкладці — перезапускати shell не потрібно.
+
 ## Використання
 
 ```bash

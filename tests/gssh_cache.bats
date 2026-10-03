@@ -14,6 +14,21 @@ load test_helper/setup
   [ -f "${GSSH_CACHE_FILE}" ]
 }
 
+@test "-r reloads projects from the env file in the current shell" {
+  export GSSH_MOCK_DATA_DIR="${TEST_TEMP_DIR}/mock_data"
+  mkdir -p "$GSSH_MOCK_DATA_DIR"
+  printf 'old-vm us-central1-a\n' > "${GSSH_MOCK_DATA_DIR}/__old-project"
+  printf 'new-vm us-central1-b\n' > "${GSSH_MOCK_DATA_DIR}/__new-project"
+  printf 'GSSH_PROJECTS="new-project"\n' > "$GSSH_ENV_FILE"
+
+  export GSSH_PROJECTS="old-project"
+  run_gssh -r
+
+  [ "$status" -eq 0 ]
+  [[ "$(<"$GSSH_CACHE_FILE")" == *$'new-vm\tnew-project\tus-central1-b'* ]]
+  [[ "$(<"$GSSH_CACHE_FILE")" != *"old-vm"* ]]
+}
+
 @test "--refresh reports VM count" {
   run_gssh --refresh
   [ "$status" -eq 0 ]
