@@ -3,6 +3,10 @@
 # Tab-completion for gssh
 # Loaded automatically by compinit via fpath
 
+# Keep refresh progress away from ZLE's command line and completion display.
+local GSSH_COMPLETING=true
+[[ -r "$GSSH_ENV_FILE" ]] && source "$GSSH_ENV_FILE"
+
 local curcontext="$curcontext" state line
 local -a accounts projects zones vms positional
 local account vm project
@@ -77,8 +81,14 @@ case $state in
     ;;
   vms)
     if (( $+functions[_gssh_cached_vms] )); then
-      vms=(${(f)"$(_gssh_cached_vms "$account" 2>/dev/null)"})
-      _describe 'GCP VM instances' vms
+      local vm_output
+      if ! vm_output=$(_gssh_cached_vms "$account" 2>/dev/null); then
+        _message -r 'Unable to refresh VM cache; run gssh --refresh for details'
+        return 1
+      fi
+      vms=(${(f)vm_output})
+      _describe 'GCP VM instances' vms ||
+        _message -r 'No matching VMs in cache; run gssh --refresh to update it'
     fi
     ;;
   projects)

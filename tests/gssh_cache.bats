@@ -177,3 +177,48 @@ load test_helper/setup
   run_gssh --list
   [ "$status" -eq 0 ]
 }
+
+@test "fresh cache with warning rows is automatically rebuilt" {
+  mkdir -p "$(dirname "$GSSH_CACHE_FILE")"
+  printf 'valid-vm\ttest-project-1\tus-central1-a\nWARNING:\ttest-project-1\tSome\n-\ttest-project-1\tRequired\n' > "$GSSH_CACHE_FILE"
+  run_gssh --list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"vm-web-01"* ]]
+  [[ "$(cat "$GSSH_CACHE_FILE")" != *"WARNING"* ]]
+}
+
+@test "stdout diagnostics are never written as VM rows" {
+  export GSSH_MOCK_DATA_DIR="${TEST_TEMP_DIR}/mock_data"
+  mkdir -p "$GSSH_MOCK_DATA_DIR"
+  printf 'WARNING: Some requests failed\n- Required permission\ncoredns-01 us-central1-a\n' > "$GSSH_MOCK_DATA_DIR/__test-project-1"
+  run_gssh --refresh
+  [ "$status" -eq 0 ]
+  [ "$(cat "$GSSH_CACHE_FILE")" = $'coredns-01\ttest-project-1\tus-central1-a' ]
+}
+
+@test "list reports failure when no cache can be fetched" {
+  export GSSH_MOCK_FAIL_LIST=1
+  run_gssh --list
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"failed to list VMs"* ]]
+}
+
+@test "multi-account refresh does not report success when all requests fail" {
+  export GSSH_ACCOUNTS="user1@test.com user2@test.com"
+  export GSSH_MOCK_AUTHED_ACCOUNTS=$'user1@test.com\nuser2@test.com'
+  export GSSH_MOCK_FAIL_LIST=1
+  run_gssh --refresh
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"cache refresh failed for 2 account(s)"* ]]
+  [[ "$output" != *"cache refreshed ("* ]]
+}
+
+@test "completion refresh never starts a terminal spinner" {
+  run zsh -c '
+    source "$GSSH_ROOT/gssh.zsh"
+    GSSH_COMPLETING=true
+    _gssh_spinner $$ should-not-be-printed
+  '
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

@@ -41,12 +41,15 @@ function _gssh_cache_mtime() {
 function _gssh_cache_is_legacy() {
   local cache_file="$1"
   local line
+  local -a cols
 
   [[ ! -s "$cache_file" ]] && return 1
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
-    [[ "$line" != *$'\t'* ]]
-    return
+    cols=("${(@ps:\t:)line}")
+    # Validate every row, including caches polluted by older versions.
+    [[ ${#cols} -eq 3 ]] || return 0
+    _gssh_valid_instance "${cols[1]}" "${cols[3]}" || return 0
   done < "$cache_file"
   return 1
 }
@@ -81,6 +84,11 @@ function _gssh_is_excluded() {
   return 1
 }
 
+function _gssh_valid_instance() {
+  # Reject diagnostics even when gcloud (or a wrapper) writes them to stdout.
+  [[ "$1" =~ '^[a-z][a-z0-9.-]*$' && "$2" =~ '^[a-z][a-z0-9-]*-[a-z]$' ]]
+}
+
 function _gssh_append_cache_rows() {
   local tmpfile="$1"
   local project="$2"
@@ -94,7 +102,8 @@ function _gssh_append_cache_rows() {
     cols=(${=line})
     name="${cols[1]:-}"
     zone="${cols[2]:-}"
-    [[ -z "$name" ]] && continue
+    (( ${#cols} == 2 )) || continue
+    _gssh_valid_instance "$name" "$zone" || continue
     _gssh_is_excluded "$name" && continue
     print -r -- "${name}${tab}${project}${tab}${zone}" >> "$tmpfile"
   done <<< "$output"
@@ -123,11 +132,13 @@ function _gssh_fetch_project_instances() {
     return 1
   fi
 
+  [[ -s "$_stderr_file" ]] && cat "$_stderr_file" >&2
   rm -f "$_stderr_file"
   _gssh_append_cache_rows "$tmpfile" "$project" "$output"
 }
 
 function _gssh_spinner() {
+  [[ "${GSSH_COMPLETING:-false}" == true ]] && return 0
   local pid="$1"
   local msg="${2:-loading...}"
   local -a frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
@@ -194,6 +205,9 @@ function _gssh_refresh_cache() {
     return 1
   fi
 
+  if [[ "$silent_errors" != true && -s "$errfile" ]]; then
+    cat "$errfile" >&2
+  fi
   rm -f "$errfile"
   mv "$tmpfile" "$cache_file"
 }
@@ -205,17 +219,19 @@ function _gssh_cached_vms() {
   local -A seen=()
 
   if [[ -z "$account" ]] && (( ${#_all_accounts} > 1 )); then
-    local _acct
+    local _acct _available=0
     for _acct in "${_all_accounts[@]}"; do
-      _gssh_refresh_cache "$_acct" false true
+      _gssh_refresh_cache "$_acct" false true || continue
       cache_file=$(_gssh_cache_file "$_acct")
       [[ ! -f "$cache_file" ]] && continue
+      (( _available += 1 ))
       while IFS=$'\t' read -r name project zone; do
         [[ -z "$name" || -n "${seen[$name]}" ]] && continue
         seen[$name]=1
         print -r -- "$name"
       done < "$cache_file"
     done
+    (( _available > 0 )) || return 1
   else
     cache_file=$(_gssh_cache_file "$account")
     _gssh_refresh_cache "$account" || return 1
@@ -572,8 +588,14 @@ function gssh() {
     local new_version
     new_version=$(grep -m1 '^GSSH_VERSION=' "$install_dir/gssh.zsh" 2>/dev/null | cut -d'"' -f2)
 
+    # Reload even if the disk files were already current: this shell may still
+    # have functions from an older version loaded.
+    source "$install_dir/gssh.zsh" || return $?
+    unfunction _gssh 2>/dev/null
+    autoload -Uz "$install_dir/_gssh"
+
     if [[ "$updated" == true ]]; then
-      echo "gssh: upgraded to ${new_version:-unknown}. Run 'exec zsh' to reload."
+      echo "gssh: upgraded to ${new_version:-unknown}; reloaded in the current shell."
     else
       echo "gssh: already at the latest version (${new_version:-$GSSH_VERSION})."
     fi
@@ -596,18 +618,25 @@ function gssh() {
   # --- list ---
   if [[ "$cmd" == "list" ]]; then
     _gssh_get_vms "$account"
-    return 0
+    return $?
   fi
 
   # --- refresh ---
   if [[ "$cmd" == "refresh" ]]; then
     if [[ -z "$account" ]] && (( ${#accounts} > 1 )); then
-      local _total=0 _acct _cf
+      local _total=0 _failed=0 _acct _cf
       for _acct in "${accounts[@]}"; do
-        _gssh_refresh_cache "$_acct" true true
+        if ! _gssh_refresh_cache "$_acct" true; then
+          (( _failed += 1 ))
+          continue
+        fi
         _cf=$(_gssh_cache_file "$_acct")
         [[ -f "$_cf" ]] && (( _total += $(wc -l < "$_cf" | tr -d ' ') ))
       done
+      if (( _failed > 0 )); then
+        echo "gssh: cache refresh failed for $_failed account(s); $_total VMs refreshed" >&2
+        return 1
+      fi
       echo "gssh: cache refreshed ($_total VMs across ${#accounts} accounts)"
     else
       local cache_file=$(_gssh_cache_file "$account")

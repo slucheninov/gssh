@@ -160,7 +160,7 @@ gssh --help        # or: gssh -h
 
 When `GSSH_ACCOUNTS` lists several emails, `gssh` works across all of them automatically:
 
-- **`gssh --refresh`** refreshes each account's cache separately, silently skipping projects that are inaccessible from a given account.
+- **`gssh --refresh`** refreshes each account's cache separately, reporting projects that are inaccessible from a given account.
 - **`gssh --list`** aggregates VMs from all account caches into a single list.
 - **`gssh <vm>`** looks up which account owns the VM in the cache and uses it for the SSH connection. If the VM exists under multiple accounts, an interactive selector is shown.
 - **`gssh --account <email> <vm>`** bypasses auto-detection and uses the specified account.
@@ -200,7 +200,7 @@ gssh: connecting to mysql-primary-01 | account: ops@company.com | project: prod-
 
 ## Cache
 
-The cache is refreshed automatically when it is missing, expired, or in the older name-only format. It stores VM name, project, and zone internally so `gssh` can narrow project/zone completion and skip selectors when a VM has a single cached match.
+The cache is refreshed automatically when it is missing, expired, in the older name-only format, or contains invalid rows (such as cached warnings). It stores VM name, project, and zone internally so `gssh` can narrow project/zone completion and skip selectors when a VM has a single cached match.
 
 Each account gets its own cache file derived from `GSSH_CACHE_FILE`:
 
@@ -209,7 +209,7 @@ Each account gets its own cache file derived from `GSSH_CACHE_FILE`:
 ~/.cache/gssh/ops_company_com_vms
 ```
 
-When multiple accounts are configured, a project that fails for one account (permission denied) is silently skipped - it will be picked up by the account that has access. The cache is updated as long as at least one project succeeds.
+When multiple accounts are configured, a project that fails for one account (permission denied) is skipped; explicit refresh reports the error so missing VMs can be investigated. Another account with access can still supply those VMs. The cache is updated as long as at least one project succeeds.
 
 Refreshes are atomic: `gssh` writes a temporary cache first and keeps the existing cache if all projects fail for a given account.
 
@@ -235,6 +235,8 @@ gssh mysql-primary-01 <TAB>
 gssh mysql-primary-01 production-12345678 <TAB>
 ```
 
+When no VM matches, completion displays a hint to run `gssh --refresh`. Cache refresh during completion does not draw a terminal spinner.
+
 For completion to work, keep the `fpath=("${HOME}/.gssh" $fpath)` line before `compinit` in your `~/.zshrc`.
 
 ## Upgrade
@@ -245,7 +247,7 @@ Upgrade the installed `gssh.zsh` and `_gssh` files with:
 gssh --upgrade
 ```
 
-The upgrade downloads all files first and replaces the installed copy only after every download succeeds. Your `~/.gssh/.env` file is not changed.
+The upgrade downloads all files first and replaces the installed copy only after every download succeeds. It reloads the functions and completion in the current shell, even when the installed files were already up to date. Your `~/.gssh/.env` file is not changed.
 
 ## Development
 

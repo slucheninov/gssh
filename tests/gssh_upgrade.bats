@@ -31,7 +31,7 @@ if [[ "${GSSH_MOCK_FAIL_DOWNLOAD:-}" == "$name" ]]; then
   exit 1
 fi
 
-printf 'downloaded %s\n' "$name" >"$dest"
+cp "${GSSH_ROOT}/$name" "$dest"
 STUB
   chmod +x "${TEST_TEMP_DIR}/bin/curl"
 }
@@ -48,8 +48,8 @@ STUB
   [ "$status" -eq 0 ]
   [[ "${output}" == *"gssh.zsh: updated"* ]]
   [[ "${output}" == *"_gssh: updated"* ]]
-  [ "$(cat "${GSSH_HOME}/gssh.zsh")" = "downloaded gssh.zsh" ]
-  [ "$(cat "${GSSH_HOME}/_gssh")" = "downloaded _gssh" ]
+  cmp "${GSSH_ROOT}/gssh.zsh" "${GSSH_HOME}/gssh.zsh"
+  cmp "${GSSH_ROOT}/_gssh" "${GSSH_HOME}/_gssh"
 }
 
 @test "--upgrade leaves installed files untouched when one download fails" {
@@ -66,4 +66,26 @@ STUB
   [[ "${output}" == *"failed to download _gssh"* ]]
   [ "$(cat "${GSSH_HOME}/gssh.zsh")" = "old gssh" ]
   [ "$(cat "${GSSH_HOME}/_gssh")" = "old completion" ]
+}
+
+@test "--upgrade reloads stale functions even when installed files are current" {
+  install_mock_curl
+  export GSSH_HOME="${TEST_TEMP_DIR}/install"
+  mkdir -p "$GSSH_HOME"
+  cp "${GSSH_ROOT}/gssh.zsh" "${GSSH_ROOT}/_gssh" "$GSSH_HOME/"
+
+  run zsh -c '
+    source "$GSSH_ROOT/gssh.zsh"
+    GSSH_VERSION=1.1.8
+    _gssh_valid_instance() { return 1; }
+    _gssh() { print old-completion; }
+    gssh --upgrade || exit
+    gssh --version
+    _gssh_valid_instance vm-web-01 us-central1-a
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already at the latest version"* ]]
+  version=$(sed -n 's/^GSSH_VERSION="\(.*\)"$/\1/p' "${GSSH_ROOT}/gssh.zsh")
+  [[ "$output" == *"gssh $version"* ]]
+  [[ "$output" != *"gssh 1.1.8"* ]]
 }
